@@ -1,0 +1,8 @@
+[general]
+name = "qwen3_kernels"
+backends = ["cuda"]
+
+[kernel.rmsnorm]
+backend = "cuda"
+src = ["kernel_src/rmsnorm.cu"]
+cuda-capabilities = ["12.0"]
