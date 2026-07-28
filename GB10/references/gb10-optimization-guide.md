@@ -8,7 +8,7 @@ Deep dive into GB10 (DGX Spark) specific optimizations for LLM inference CUDA ke
 
 | Component | Specification | Notes |
 |-----------|---------------|-------|
-| Compute Capability | 12.0 / 12.1 (sm_120 / sm_121) | Use `compute_120` PTX for forward compat |
+| Compute Capability | 12.1 (sm_121a) | Arch-specific target; ship `compute_120` PTX for portability |
 | SMs | 48 | ~3.9x fewer than RTX 6000 Pro (188) |
 | CUDA Cores | 6,144 | 128 per SM |
 | Tensor Cores | 192 | 5th gen, FP4/FP8/FP16/BF16 |
@@ -34,7 +34,7 @@ Deep dive into GB10 (DGX Spark) specific optimizations for LLM inference CUDA ke
 | Memory Size | 128 GB | 96 GB | 32 GB |
 | L2 Cache | 24 MB | 128 MB | 96 MB |
 | TDP | 140W (SoC) | 600W | 575W |
-| Compute Cap | sm_120 | sm_100 | sm_100 |
+| Compute Cap | sm_121a | sm_121 | sm_120 |
 
 ### What Makes GB10 Unique
 
@@ -394,8 +394,8 @@ Achieving 40-60% of peak bandwidth is realistic:
 ```bash
 nvcc \
     -O3 \
-    -gencode=arch=compute_120,code=sm_120 \    # Native sm_120
-    -gencode=arch=compute_120,code=compute_120 \ # PTX for JIT on sm_121
+    -gencode=arch=compute_121a,code=sm_121a \  # Native sm_121a
+    -gencode=arch=compute_120,code=compute_120 \ # Portable PTX fallback
     --use_fast_math \
     -lineinfo \
     --threads=4 \
@@ -405,16 +405,16 @@ nvcc \
 **Key flags:**
 | Flag | Purpose |
 |------|---------|
-| `-gencode=arch=compute_120,code=sm_120` | Native SASS for sm_120 |
-| `-gencode=arch=compute_120,code=compute_120` | PTX fallback for sm_121 JIT |
+| `-gencode=arch=compute_121a,code=sm_121a` | Native SASS for sm_121a (arch-specific features) |
+| `-gencode=arch=compute_120,code=compute_120` | Portable PTX fallback (JIT on other 12.x parts) |
 | `--use_fast_math` | Fast `rsqrtf`, `__expf`, etc. |
 | `-lineinfo` | Debug info for ncu/nsys without performance loss |
 | `--threads=4` | Parallel ptxas compilation |
 | `-maxrregcount=N` | Limit registers (rarely needed) |
 
-**Requires CUDA Toolkit 12.8+** for sm_120 support. Check with:
+**Requires CUDA Toolkit 12.8+** for sm_121a support. Check with:
 ```bash
-nvcc --list-gpu-arch | grep 120
+nvcc --list-gpu-arch | grep 121
 ```
 
 ### setup.py Configuration
@@ -424,7 +424,7 @@ extra_compile_args={
     "cxx": ["-O3"],
     "nvcc": [
         "-O3",
-        "-gencode=arch=compute_120,code=sm_120",
+        "-gencode=arch=compute_121a,code=sm_121a",
         "-gencode=arch=compute_120,code=compute_120",
         "--use_fast_math",
         "-lineinfo",
@@ -649,7 +649,7 @@ model = AutoModelForCausalLM.from_pretrained(
 To make your GB10-optimized kernel available to others:
 
 1. Use the `TORCH_LIBRARY_EXPAND` binding pattern (see torch.compile section above)
-2. Set `cuda-capabilities = ["12.0"]` in `build.toml`
+2. Set `cuda-capabilities = ["12.1"]` in `build.toml`
 3. Build and upload:
 
 ```bash
@@ -713,9 +713,9 @@ Fix: Include all required headers:
 #include <c10/cuda/CUDAGuard.h>
 ```
 
-**3. sm_120 not recognized**
+**3. sm_121a not recognized**
 ```
-nvcc fatal: Unsupported gpu architecture 'compute_120'
+nvcc fatal: Unsupported gpu architecture 'compute_121a'
 ```
 Fix: Requires CUDA Toolkit 12.8+. Check version:
 ```bash
@@ -812,7 +812,7 @@ export TP_SOCKET_IFNAME=enp1s0f1np1
 
 NCCL must be compiled for Blackwell aarch64:
 ```bash
-make -j src.build NVCC_GENCODE="-gencode=arch=compute_121,code=sm_121"
+make -j src.build NVCC_GENCODE="-gencode=arch=compute_121a,code=sm_121a"
 ```
 
 Measured NCCL bandwidth: **~22-23 GB/s** (all_gather_perf), consistent with 200 Gbps line rate minus protocol overhead.
@@ -1108,7 +1108,7 @@ Fusing quantization into compute kernels (e.g., `rms_norm + fp8_quant`) eliminat
 ┌─────────────────────────────────────────┐
 │          GB10 DGX Spark Quick Ref       │
 ├─────────────────────────────────────────┤
-│ Arch:       sm_120 (Blackwell)          │
+│ Arch:       sm_121a (Blackwell)         │
 │ SMs:        48                          │
 │ CUDA Cores: 6,144                       │
 │ Memory:     128 GB LPDDR5X (unified)    │
@@ -1120,7 +1120,7 @@ Fusing quantization into compute kernels (e.g., `rms_norm + fp8_quant`) eliminat
 │ TDP:        140W (SoC)                  │
 │ CUDA:       >= 12.8 required            │
 ├─────────────────────────────────────────┤
-│ Compile:  -gencode compute_120,sm_120   │
+│ Compile:  -gencode compute_121a,sm_121a │
 │ Threads:  512 (reduction), 256 (elem)   │
 │ Unroll:   #pragma unroll 8              │
 │ Vectorize: bf162 / half2 / float4       │

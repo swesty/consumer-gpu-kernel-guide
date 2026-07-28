@@ -8,7 +8,7 @@ Deep dive into RTX 5090 Blackwell (GB202) specific optimizations for LLM inferen
 
 | Component | Specification | Notes |
 |-----------|---------------|-------|
-| Compute Capability | 10.0 (sm_100) | Target in build.toml / setup.py |
+| Compute Capability | 12.0 (sm_120) | Target in build.toml / setup.py |
 | GPU Die | GB202 | TSMC 4NP, 750 mm², 92.2B transistors |
 | SMs | 170 | Consumer flagship |
 | CUDA Cores | 21,760 | 128 per SM |
@@ -35,7 +35,7 @@ Deep dive into RTX 5090 Blackwell (GB202) specific optimizations for LLM inferen
 | Memory Type | GDDR7 | GDDR7 | GDDR7 | LPDDR5X | HBM3e |
 | Memory Size | **32 GB** | 96 GB | 16 GB | 128 GB | 192 GB |
 | L2 Cache | **96 MB** | 128 MB | 48 MB | 24 MB | 96 MB |
-| Compute Cap | sm_100 | sm_100 | sm_100 | sm_120 | sm_100 |
+| Compute Cap | sm_120 | sm_121 | sm_120 | sm_121a | sm_100 |
 | TDP | 575W | 600W | 360W | 140W | 1000W |
 
 ### Blackwell Architecture Highlights
@@ -48,7 +48,7 @@ Deep dive into RTX 5090 Blackwell (GB202) specific optimizations for LLM inferen
 
 ## VRAM Constraints: The RTX 5090's Primary Differentiator
 
-The 32 GB GDDR7 is the most important constraint distinguishing the RTX 5090 from the RTX 6000 Pro (96 GB). While kernel code is nearly identical (same sm_100, same GDDR7, same bandwidth), **model fit** is fundamentally different.
+The 32 GB GDDR7 is the most important constraint distinguishing the RTX 5090 from the RTX 6000 Pro (96 GB). While kernel code is nearly identical (same GB202 die, same GDDR7, same bandwidth — sm_120 vs sm_121), **model fit** is fundamentally different.
 
 ### Model Fit Analysis
 
@@ -468,8 +468,8 @@ Note: Custom kernels and `torch.compile` are mutually exclusive without custom o
 ```bash
 nvcc \
     -O3 \
-    -arch=sm_100 \
-    -gencode=arch=compute_100,code=sm_100 \
+    -arch=sm_120 \
+    -gencode=arch=compute_120,code=sm_120 \
     --use_fast_math \
     -lineinfo \
     --threads=4 \
@@ -478,14 +478,14 @@ nvcc \
 
 | Flag | Purpose |
 |------|---------|
-| `-arch=sm_100` | Native SASS for Blackwell sm_100 |
-| `-gencode=arch=compute_100,code=sm_100` | Explicit gencode for sm_100 |
+| `-arch=sm_120` | Native SASS for Blackwell sm_120 |
+| `-gencode=arch=compute_120,code=sm_120` | Explicit gencode for sm_120 |
 | `--use_fast_math` | Fast `rsqrtf`, `__expf`, etc. (~10% faster math) |
 | `-lineinfo` | Debug info for ncu/nsys (no perf impact) |
 | `--threads=4` | Parallel ptxas compilation |
 | `-maxrregcount=N` | Limit registers if needed for occupancy |
 
-**Requires CUDA Toolkit 12.8+** for sm_100 support.
+**Requires CUDA Toolkit 12.8+** for sm_120 support.
 
 ### setup.py Configuration
 
@@ -494,8 +494,8 @@ extra_compile_args={
     "cxx": ["-O3"],
     "nvcc": [
         "-O3",
-        "-arch=sm_100",
-        "-gencode=arch=compute_100,code=sm_100",
+        "-arch=sm_120",
+        "-gencode=arch=compute_120,code=sm_120",
         "--use_fast_math",
         "-lineinfo",
         "--threads=4",
@@ -729,7 +729,7 @@ model = AutoModelForCausalLM.from_pretrained(
 To make your RTX 5090-optimized kernel available to others:
 
 1. Use the `TORCH_LIBRARY_EXPAND` binding pattern (see torch.compile section above)
-2. Set `cuda-capabilities = ["10.0"]` in `build.toml`
+2. Set `cuda-capabilities = ["12.0"]` in `build.toml`
 3. Build and upload:
 
 ```bash
@@ -787,9 +787,9 @@ At 575W TDP, the RTX 5090 requires:
 
 ### Driver and Software Support
 
-- CUDA Toolkit 12.8+ required for sm_100
+- CUDA Toolkit 12.8+ required for sm_120
 - Latest NVIDIA drivers (560+ series)
-- PyTorch 2.6+ for native sm_100 support
+- PyTorch 2.6+ for native sm_120 support
 
 ## Troubleshooting
 
@@ -816,9 +816,9 @@ Fix: Include all required headers:
 #include <c10/cuda/CUDAGuard.h>
 ```
 
-**3. sm_100 not recognized**
+**3. sm_120 not recognized**
 ```
-nvcc fatal: Unsupported gpu architecture 'compute_100'
+nvcc fatal: Unsupported gpu architecture 'compute_120'
 ```
 Fix: Requires CUDA Toolkit 12.8+. Check version:
 ```bash
@@ -1034,7 +1034,7 @@ Fusing quantization into compute kernels (e.g., `rms_norm + fp8_quant`) eliminat
 ┌─────────────────────────────────────────┐
 │       RTX 5090 Blackwell Quick Ref      │
 ├─────────────────────────────────────────┤
-│ Arch:       sm_100 (Blackwell GB202)    │
+│ Arch:       sm_120 (Blackwell GB202)    │
 │ SMs:        170                         │
 │ CUDA Cores: 21,760                      │
 │ Memory:     32 GB GDDR7 (dedicated)     │
@@ -1046,7 +1046,7 @@ Fusing quantization into compute kernels (e.g., `rms_norm + fp8_quant`) eliminat
 │ TDP:        575W                        │
 │ CUDA:       >= 12.8 required            │
 ├─────────────────────────────────────────┤
-│ Compile:  -arch=sm_100                  │
+│ Compile:  -arch=sm_120                  │
 │ Threads:  1024 (reduction), 256 (elem)  │
 │ Unroll:   #pragma unroll 4              │
 │ Vectorize: bf162 / half2 / float4       │

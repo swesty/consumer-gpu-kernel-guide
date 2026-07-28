@@ -1,5 +1,5 @@
 """
-Qwen3 RMSNorm CUDA Kernels — RTX 5090 Blackwell (sm_100)
+Qwen3 RMSNorm CUDA Kernels — RTX 5090 Blackwell (sm_120)
 
 Vectorized RMSNorm kernel optimized for Qwen3-8B:
   - hidden_size=4096 (layer norms)

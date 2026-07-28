@@ -1,5 +1,5 @@
 """
-Qwen3 RMSNorm CUDA Kernels — NVIDIA GB10 (DGX Spark, sm_120)
+Qwen3 RMSNorm CUDA Kernels — NVIDIA GB10 (DGX Spark, sm_121a)
 
 Vectorized RMSNorm kernel optimized for Qwen3-8B:
   - hidden_size=4096 (layer norms)

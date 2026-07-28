@@ -1,7 +1,7 @@
 """
 Build script for Qwen3 RMSNorm CUDA kernels.
 
-Targets RTX 6000 Pro Blackwell (sm_100).
+Targets RTX 6000 Pro Blackwell (sm_121).
 
 Build:
     pip install -e .
@@ -29,8 +29,8 @@ setup(
                 "cxx": ["-O3"],
                 "nvcc": [
                     "-O3",
-                    "-arch=sm_100",          # Blackwell
-                    "-gencode=arch=compute_100,code=sm_100",
+                    "-arch=sm_121",          # Blackwell
+                    "-gencode=arch=compute_121,code=sm_121",
                     "--use_fast_math",
                     "-lineinfo",             # For profiling with ncu/nsys
                     "--threads=4",           # Parallel compilation

@@ -1,7 +1,7 @@
 """
 Build script for Qwen3 RMSNorm CUDA kernels.
 
-Targets NVIDIA GB10 (DGX Spark, sm_120 / sm_121).
+Targets NVIDIA GB10 (DGX Spark, sm_121a).
 
 Build:
     pip install -e .
@@ -29,9 +29,9 @@ setup(
                 "cxx": ["-O3"],
                 "nvcc": [
                     "-O3",
-                    # GB10 DGX Spark: sm_120 base, forward-compatible with sm_121
-                    "-gencode=arch=compute_120,code=sm_120",
-                    "-gencode=arch=compute_120,code=compute_120",  # PTX for JIT on sm_121
+                    # GB10 DGX Spark: sm_121a native, portable PTX fallback
+                    "-gencode=arch=compute_121a,code=sm_121a",
+                    "-gencode=arch=compute_120,code=compute_120",  # Portable PTX fallback
                     "--use_fast_math",
                     "-lineinfo",             # For profiling with ncu/nsys
                     "--threads=4",           # Parallel compilation

@@ -38,7 +38,7 @@ The RTX 5090 is a consumer discrete GPU based on the GB202 die (same die as RTX 
 
 ### RTX 5090 vs RTX 6000 Pro: Key Differences
 
-The RTX 5090 and RTX 6000 Pro share the same GB202 die and sm_100 compute capability, but differ in important ways:
+The RTX 5090 and RTX 6000 Pro share the same GB202 die and GDDR7 memory system — though they report different compute capabilities (sm_120 vs sm_121) — but differ in important ways:
 
 | Aspect | RTX 5090 | RTX 6000 Pro | Impact |
 |--------|----------|-------------|--------|
@@ -226,4 +226,4 @@ model = torch.compile(model, mode="reduce-overhead")
 | PCIe transfer cost | None at runtime | One-time ~0.5s model load |
 | Page migration | N/A | No unified memory effects |
 | Kernel code differences from GB10 | `MAX_THREADS=1024`, `unroll 4` | Minor tuning, same algorithm |
-| Kernel code differences from RTX 6000 Pro | **None** | Same sm_100, same GDDR7, same tuning |
+| Kernel code differences from RTX 6000 Pro | **None** | sm_120 vs sm_121, same GDDR7, same tuning |

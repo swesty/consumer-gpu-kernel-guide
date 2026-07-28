@@ -1,5 +1,5 @@
 /*
- * Vectorized RMSNorm CUDA Kernel — RTX 6000 Pro Blackwell (sm_100)
+ * Vectorized RMSNorm CUDA Kernel — RTX 6000 Pro Blackwell (sm_121)
  *
  * Optimized for Qwen3-8B model in HuggingFace transformers:
  *   - hidden_size = 4096  (layer norms)
@@ -8,7 +8,7 @@
  *   - dtype       = bfloat16 / float16 / float32
  *
  * RTX 6000 Pro Blackwell (GB202) target parameters:
- *   - Compute capability: sm_100
+ *   - Compute capability: sm_121
  *   - SMs: 188
  *   - Memory bandwidth: 1.79 TB/s (GDDR7, 512-bit)
  *   - L2 cache: 128 MB

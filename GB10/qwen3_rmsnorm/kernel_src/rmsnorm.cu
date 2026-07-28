@@ -1,5 +1,5 @@
 /*
- * Vectorized RMSNorm CUDA Kernel — NVIDIA GB10 (DGX Spark, sm_120)
+ * Vectorized RMSNorm CUDA Kernel — NVIDIA GB10 (DGX Spark, sm_121a)
  *
  * Optimized for Qwen3-8B model in HuggingFace transformers:
  *   - hidden_size = 4096  (layer norms)
@@ -8,7 +8,7 @@
  *   - dtype       = bfloat16 / float16 / float32
  *
  * NVIDIA GB10 (DGX Spark) target parameters:
- *   - Compute capability: sm_120 / sm_121
+ *   - Compute capability: sm_121a
  *   - SMs: 48
  *   - CUDA cores: 6,144
  *   - Memory: 128 GB LPDDR5X unified (shared with Grace CPU)

@@ -1,7 +1,7 @@
 """
 Build script for Qwen3 RMSNorm CUDA kernels.
 
-Targets RTX 5090 Blackwell (sm_100).
+Targets RTX 5090 Blackwell (sm_120).
 
 Build:
     pip install -e .
@@ -29,8 +29,8 @@ setup(
                 "cxx": ["-O3"],
                 "nvcc": [
                     "-O3",
-                    "-arch=sm_100",          # Blackwell
-                    "-gencode=arch=compute_100,code=sm_100",
+                    "-arch=sm_120",          # Blackwell
+                    "-gencode=arch=compute_120,code=sm_120",
                     "--use_fast_math",
                     "-lineinfo",             # For profiling with ncu/nsys
                     "--threads=4",           # Parallel compilation

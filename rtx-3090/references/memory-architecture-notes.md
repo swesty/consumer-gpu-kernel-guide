@@ -138,7 +138,7 @@ The RTX 3090's sm_86 has a maximum of 1,536 threads per SM (48 warps), unlike Bl
 - 100% occupancy provides better latency hiding with 3 independent blocks per SM
 - For hidden_size=4096 BF16: 2048 vec elements / 512 threads = 4 elements/thread — well-balanced
 
-**Contrast with Blackwell (sm_100):**
+**Contrast with Blackwell (sm_120 / sm_121):**
 - 1024 threads/block = 2 blocks/SM = 2048 threads = 100% occupancy on Blackwell
 - But only 66.7% occupancy on RTX 3090's sm_86
 

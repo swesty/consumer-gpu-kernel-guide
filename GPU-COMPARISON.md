@@ -9,7 +9,7 @@ Side-by-side comparison of all GPUs in this repository, covering architecture, m
 | **Architecture** | Blackwell | Ampere | Blackwell | Blackwell |
 | **GPU Die** | GB10 SoC | GA102 | GB202 | GB202 |
 | **Process** | TSMC 5nm | Samsung 8nm | TSMC 4NP | TSMC 5nm |
-| **Compute Capability** | sm_120 | sm_86 | sm_100 | sm_100 |
+| **Compute Capability** | sm_121a | sm_86 | sm_120 | sm_121 |
 | **SMs** | 48 | 82 | 170 | 188 |
 | **CUDA Cores** | 6,144 | 10,496 | 21,760 | 24,064 |
 | **Tensor Cores** | 192 (5th gen) | 328 (3rd gen) | 680 (5th gen) | 752 (5th gen) |
@@ -65,14 +65,14 @@ Recommended settings for RMSNorm-class reduction kernels (hidden_size=4096, BF16
 | **`#pragma unroll`** | 8 | 4 | 4 | 4 |
 | **Grid size target** | >= 48 | >= 82 | >= 170 | >= 188 |
 | **BW target (% peak)** | > 30% | > 35% | > 35% | > 35% |
-| **`cuda-capabilities`** | `"12.0"` | `"8.6"` | `"10.0"` | `"10.0"` |
+| **`cuda-capabilities`** | `"12.1"` | `"8.6"` | `"12.0"` | `"12.1"` |
 | **Min CUDA Toolkit** | 12.8+ | 11.1+ | 12.8+ | 12.8+ |
 
 **Why the differences:**
 
 - **GB10 uses 512 threads, unroll 8** — LPDDR5X has higher latency (~150-200 ns) than GDDR, so more blocks per SM and deeper unrolling are needed to keep enough memory requests in flight.
 - **RTX 3090 uses 512 threads, unroll 4** — sm_86 limits threads/SM to 1,536; using 1024 threads/block would give only 1 block/SM (66.7% occupancy). GDDR6X latency (~100 ns) is low enough for unroll 4.
-- **RTX 5090 / RTX 6000 Pro use 1024 threads, unroll 4** — sm_100 supports 2,048 threads/SM, so 2 blocks of 1024 achieves 100% occupancy with less scheduling overhead. GDDR7 latency is low.
+- **RTX 5090 / RTX 6000 Pro use 1024 threads, unroll 4** — sm_120 / sm_121 support 2,048 threads/SM, so 2 blocks of 1024 achieves 100% occupancy with less scheduling overhead. GDDR7 latency is low.
 
 ## Model Fit (Qwen3 Family, BF16)
 
@@ -135,16 +135,16 @@ Whether common activation tensors fit in L2 (enabling inter-kernel reuse):
 ```
 gpu-kernels/
 ├── GPU-COMPARISON.md              ← this file
-├── GB10/                          ← DGX Spark (sm_120, 128 GB LPDDR5X)
+├── GB10/                          ← DGX Spark (sm_121a, 128 GB LPDDR5X)
 │   ├── references/
 │   └── qwen3_rmsnorm/
 ├── rtx-3090/                      ← Ampere (sm_86, 24 GB GDDR6X)
 │   ├── references/
 │   └── qwen3_rmsnorm/
-├── rtx-5090/                      ← Blackwell (sm_100, 32 GB GDDR7)
+├── rtx-5090/                      ← Blackwell (sm_120, 32 GB GDDR7)
 │   ├── references/
 │   └── qwen3_rmsnorm/
-├── rtx-6000-pro/                  ← RTX 6000 Pro (sm_100, 96 GB GDDR7) — structured layout
+├── rtx-6000-pro/                  ← RTX 6000 Pro (sm_121, 96 GB GDDR7) — structured layout
     ├── references/
     └── qwen3_rmsnorm/
 ```

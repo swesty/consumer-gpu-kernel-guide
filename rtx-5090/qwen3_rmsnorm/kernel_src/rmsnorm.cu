@@ -1,5 +1,5 @@
 /*
- * Vectorized RMSNorm CUDA Kernel — RTX 5090 Blackwell (sm_100)
+ * Vectorized RMSNorm CUDA Kernel — RTX 5090 Blackwell (sm_120)
  *
  * Optimized for Qwen3-8B model in HuggingFace transformers:
  *   - hidden_size = 4096  (layer norms)
@@ -8,7 +8,7 @@
  *   - dtype       = bfloat16 / float16 / float32
  *
  * RTX 5090 Blackwell (GB202) target parameters:
- *   - Compute capability: sm_100
+ *   - Compute capability: sm_120
  *   - SMs: 170
  *   - Memory bandwidth: 1.79 TB/s (GDDR7, 512-bit)
  *   - L2 cache: 96 MB

@@ -10,7 +10,7 @@ GB10 specs:
   - 48 SMs, 6144 CUDA cores
   - 128 GB LPDDR5X unified memory @ 273 GB/s
   - 24 MB L2 cache
-  - sm_120 / sm_121
+  - sm_121a
 
 Usage:
     pip install -e .

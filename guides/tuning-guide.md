@@ -198,7 +198,7 @@ Example (RTX 3090, 1024 threads/block):
 ```
 
 Three things limit occupancy:
-1. **Thread count**: Max threads per SM (1536 for sm_86, 2048 for sm_100/sm_120)
+1. **Thread count**: Max threads per SM (1536 for sm_86, 2048 for sm_120/sm_121/sm_121a)
 2. **Register usage**: 65536 registers / (threads_per_block x registers_per_thread) = max blocks
 3. **Shared memory**: Shared memory per SM / shared memory per block = max blocks
 
@@ -336,9 +336,9 @@ The constraint is **max threads per SM**, which differs across architectures:
 
 ```
 sm_86 (RTX 3090):   1,536 threads/SM (48 warps)
-sm_100 (RTX 5090):  2,048 threads/SM (64 warps)
-sm_100 (RTX 6000):  2,048 threads/SM (64 warps)
-sm_120 (GB10):      2,048 threads/SM (64 warps)
+sm_120 (RTX 5090):  2,048 threads/SM (64 warps)
+sm_121 (RTX 6000):  2,048 threads/SM (64 warps)
+sm_121a (GB10):     2,048 threads/SM (64 warps)
 ```
 
 For our RMSNorm kernel with hidden_size=4096 BF16 (2048 vectorized elements):
@@ -425,9 +425,9 @@ The `cuda-capabilities` field in `build.toml` tells the compiler which GPU archi
 | GPU | cuda-capabilities | NVCC Flag | Min CUDA Toolkit |
 |-----|-------------------|-----------|------------------|
 | RTX 3090 | `"8.6"` | `-arch=sm_86` | 11.1+ |
-| RTX 5090 | `"10.0"` | `-arch=sm_100` | 12.8+ |
-| RTX 6000 Pro | `"10.0"` | `-arch=sm_100` | 12.8+ |
-| GB10 | `"12.0"` | `-gencode=arch=compute_120,code=sm_120` | 12.8+ |
+| RTX 5090 | `"12.0"` | `-arch=sm_120` | 12.8+ |
+| RTX 6000 Pro | `"12.1"` | `-arch=sm_121` | 12.8+ |
+| GB10 | `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | 12.8+ |
 
 Targeting the wrong architecture means the GPU either can't run the code (too new) or runs it suboptimally (missing hardware features). Always match exactly.
 
@@ -439,7 +439,7 @@ Targeting the wrong architecture means the GPU either can't run the code (too ne
 | **Unroll depth** | 4 | 4 | 4 | 8 |
 | **Min grid size** | >= 82 | >= 170 | >= 188 | >= 48 |
 | **Vectorization** | bf162/half2/float4 | bf162/half2/float4 | bf162/half2/float4 | bf162/half2/float4 |
-| **cuda-capabilities** | `"8.6"` | `"10.0"` | `"10.0"` | `"12.0"` |
+| **cuda-capabilities** | `"8.6"` | `"12.0"` | `"12.1"` | `"12.1"` |
 
 ---
 
@@ -533,7 +533,7 @@ static inline int compute_threads_vec2(int hidden_size) {
 
 ---
 
-### RTX 5090 (Blackwell, sm_100)
+### RTX 5090 (Blackwell, sm_120)
 
 #### Hardware Quick Reference
 
@@ -541,7 +541,7 @@ static inline int compute_threads_vec2(int hidden_size) {
 ┌─────────────────────────────────────────┐
 │       RTX 5090 Blackwell (GB202)        │
 ├─────────────────────────────────────────┤
-│ Compute:  sm_100, 170 SMs, 21760 cores  │
+│ Compute:  sm_120, 170 SMs, 21760 cores  │
 │ Memory:   32 GB GDDR7, 1.79 TB/s       │
 │ L2:       96 MB                         │
 │ Shared:   128 KB/SM (up to 228 KB)      │
@@ -558,7 +558,7 @@ static inline int compute_threads_vec2(int hidden_size) {
 
 The RTX 5090 is the **highest bandwidth consumer GPU** in this set. Its constraint profile is dominated by one thing: **32 GB VRAM**.
 
-While the kernel execution hardware is nearly identical to the RTX 6000 Pro (same sm_100, same GDDR7, same 1.79 TB/s), the 32 GB capacity limits what models fit. The 5090 is the GPU where model fit strategy matters most — FP8/FP4 quantization (supported by 5th-gen Tensor Cores) is the key to fitting larger models.
+While the kernel execution hardware is nearly identical to the RTX 6000 Pro (same GB202 die, same GDDR7, same 1.79 TB/s — sm_120 vs sm_121), the 32 GB capacity limits what models fit. The 5090 is the GPU where model fit strategy matters most — FP8/FP4 quantization (supported by 5th-gen Tensor Cores) is the key to fitting larger models.
 
 The 5090 has 170 SMs — more than the 3090's 82 or the GB10's 48, but fewer than the RTX 6000 Pro's 188. Short sequences (< 170 rows) underutilize the GPU. For single-token decode, individual kernels are extremely fast (1.79 TB/s), making kernel launch overhead a proportionally larger fraction of total time.
 
@@ -593,14 +593,14 @@ The 5090 is the sweet spot for Qwen3-8B BF16. For Qwen3-14B, FP8 is the right st
 #### Optimization Priority Order
 
 1. **Vectorize loads** — still the foundation at 1.79 TB/s
-2. **Use 1024 threads/block** — 100% occupancy on sm_100
+2. **Use 1024 threads/block** — 100% occupancy on sm_120
 3. **Exploit 96 MB L2** — moderate activations stay cached between kernels
 4. **Reduce launch overhead** — kernels are fast; the gaps between them matter. Use CUDA graphs or `torch.compile`
 5. **Use FP8/FP4 quantization** for models >8B — the 5th-gen Tensor Cores make this efficient
 
 ---
 
-### RTX 6000 Pro (Blackwell, sm_100)
+### RTX 6000 Pro (Blackwell, sm_121)
 
 #### Hardware Quick Reference
 
@@ -608,7 +608,7 @@ The 5090 is the sweet spot for Qwen3-8B BF16. For Qwen3-14B, FP8 is the right st
 ┌─────────────────────────────────────────┐
 │     RTX 6000 Pro Blackwell (GB202)      │
 ├─────────────────────────────────────────┤
-│ Compute:  sm_100, 188 SMs, 24064 cores  │
+│ Compute:  sm_121, 188 SMs, 24064 cores  │
 │ Memory:   96 GB GDDR7, 1.79 TB/s       │
 │ L2:       128 MB                        │
 │ Shared:   128 KB/SM (up to 228 KB)      │
@@ -646,7 +646,7 @@ for (int i = tid; i < vec_hidden; i += stride) {
 }
 ```
 
-**Identical to the RTX 5090.** Same sm_100 architecture, same GDDR7 memory, same thread/block configuration. The kernel code is the same — the difference is what you can do at the system level (larger models, bigger batches, longer contexts).
+**Effectively identical to the RTX 5090.** Same GB202 architecture (sm_121 vs the 5090's sm_120), same GDDR7 memory, same thread/block configuration. The kernel code is the same — the difference is what you can do at the system level (larger models, bigger batches, longer contexts).
 
 **Why 188 SMs matters**: You need >= 188 blocks (rows) to fully utilize the GPU. For batch=1, seq_len=128, only 68% of SMs are active. The RTX 6000 Pro reaches full utilization at longer sequences than any other GPU in this set.
 
@@ -671,7 +671,7 @@ The 96 GB VRAM is the RTX 6000 Pro's key differentiator. While the kernel runs a
 
 ---
 
-### GB10 / DGX Spark (Blackwell, sm_120)
+### GB10 / DGX Spark (Blackwell, sm_121a)
 
 #### Hardware Quick Reference
 
@@ -679,7 +679,7 @@ The 96 GB VRAM is the RTX 6000 Pro's key differentiator. While the kernel runs a
 ┌─────────────────────────────────────────┐
 │       GB10 DGX Spark (Blackwell)        │
 ├─────────────────────────────────────────┤
-│ Compute:  sm_120, 48 SMs, 6144 cores   │
+│ Compute:  sm_121a, 48 SMs, 6144 cores  │
 │ Memory:   128 GB LPDDR5X (unified)     │
 │ BW:       273 GB/s (shared with CPU)   │
 │ L2:       24 MB                         │
@@ -737,7 +737,7 @@ for (int i = tid; i < vec_hidden; i += stride) {
 }
 ```
 
-**Why 512 threads (not 1024)**: Even though sm_120 supports 2048 threads/SM, using 512 threads/block allows 4 blocks per SM. Four blocks provide 64 warps — when one block stalls on a slow LPDDR5X load, three others can run. With 1024 threads, only 2 blocks fit, giving fewer opportunities to hide the higher memory latency.
+**Why 512 threads (not 1024)**: Even though sm_121a supports 2048 threads/SM, using 512 threads/block allows 4 blocks per SM. Four blocks provide 64 warps — when one block stalls on a slow LPDDR5X load, three others can run. With 1024 threads, only 2 blocks fit, giving fewer opportunities to hide the higher memory latency.
 
 **Why unroll 8**: LPDDR5X's ~150-200 ns latency means the memory pipeline needs more outstanding requests to stay full. With 512 threads and hidden_size=4096 (2048 vec elements / 512 threads = 4 iterations), `unroll 8` ensures the compiler fully unrolls the loop, issuing all load instructions before any dependent computation.
 
@@ -785,9 +785,9 @@ Here are the three lines that actually change across the four kernel files:
 | File | `MAX_THREADS` | `#pragma unroll` | `cuda-capabilities` |
 |------|---------------|------------------|----------------------|
 | `rtx-3090/.../rmsnorm.cu` | 512 | 4 | `"8.6"` |
-| `rtx-5090/.../rmsnorm.cu` | 1024 | 4 | `"10.0"` |
-| `rtx-6000-pro/.../rmsnorm.cu` | 1024 | 4 | `"10.0"` |
-| `GB10/.../rmsnorm.cu` | 512 | 8 | `"12.0"` |
+| `rtx-5090/.../rmsnorm.cu` | 1024 | 4 | `"12.0"` |
+| `rtx-6000-pro/.../rmsnorm.cu` | 1024 | 4 | `"12.1"` |
+| `GB10/.../rmsnorm.cu` | 512 | 8 | `"12.1"` |
 
 Everything else — the vectorization strategy, the two-phase reduce-then-normalize algorithm, the warp shuffle reduction, the block reduce via shared memory, the type conversion helpers — is identical across all four GPUs. The algorithm doesn't change. The tuning does.
 
@@ -1055,8 +1055,9 @@ The `cuda-capabilities` field maps directly to NVCC's `-arch` flag:
 | build.toml | NVCC flag | GPU |
 |------------|-----------|-----|
 | `"8.6"` | `-arch=sm_86` | RTX 3090 |
-| `"10.0"` | `-arch=sm_100` | RTX 5090, RTX 6000 Pro |
-| `"12.0"` | `-gencode=arch=compute_120,code=sm_120` | GB10 |
+| `"12.0"` | `-arch=sm_120` | RTX 5090 |
+| `"12.1"` | `-arch=sm_121` | RTX 6000 Pro |
+| `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | GB10 |
 
 ---
 
