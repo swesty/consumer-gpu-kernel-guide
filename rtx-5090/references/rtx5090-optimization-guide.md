@@ -35,7 +35,7 @@ Deep dive into RTX 5090 Blackwell (GB202) specific optimizations for LLM inferen
 | Memory Type | GDDR7 | GDDR7 | GDDR7 | LPDDR5X | HBM3e |
 | Memory Size | **32 GB** | 96 GB | 16 GB | 128 GB | 192 GB |
 | L2 Cache | **96 MB** | 128 MB | 48 MB | 24 MB | 96 MB |
-| Compute Cap | sm_120 | sm_121 | sm_120 | sm_121a | sm_100 |
+| Compute Cap | sm_120 | sm_120 | sm_120 | sm_121a | sm_100 |
 | TDP | 575W | 600W | 360W | 140W | 1000W |
 
 ### Blackwell Architecture Highlights
@@ -48,7 +48,7 @@ Deep dive into RTX 5090 Blackwell (GB202) specific optimizations for LLM inferen
 
 ## VRAM Constraints: The RTX 5090's Primary Differentiator
 
-The 32 GB GDDR7 is the most important constraint distinguishing the RTX 5090 from the RTX 6000 Pro (96 GB). While kernel code is nearly identical (same GB202 die, same GDDR7, same bandwidth — sm_120 vs sm_121), **model fit** is fundamentally different.
+The 32 GB GDDR7 is the most important constraint distinguishing the RTX 5090 from the RTX 6000 Pro (96 GB). While kernel code is nearly identical (same sm_120, same GDDR7, same bandwidth), **model fit** is fundamentally different.
 
 ### Model Fit Analysis
 

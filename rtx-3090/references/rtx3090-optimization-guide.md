@@ -49,7 +49,7 @@ Deep dive into RTX 3090 Ampere (GA102) specific optimizations for LLM inference 
 | Memory Size | 24 GB GDDR6X | 32 GB GDDR7 | 96 GB GDDR7 |
 | L2 Cache | **6 MB** | 96 MB | 128 MB |
 | Max Threads/SM | 1,536 | 2,048 | 2,048 |
-| Compute Cap | sm_86 | sm_120 | sm_121 |
+| Compute Cap | sm_86 | sm_120 | sm_120 |
 | TDP | 350W | 575W | 600W |
 | FP8/FP4 | No | Yes (5th gen TC) | Yes (5th gen TC) |
 
@@ -202,7 +202,7 @@ The RTX 3090's sm_86 supports a maximum of **1,536 threads per SM** (48 warps), 
 - For hidden_size=4096 BF16: 2048 vec elements / 512 threads = 4 elements/thread — well-balanced
 
 **Contrast with Blackwell GPUs (RTX 5090/6000 Pro):**
-- Blackwell's sm_120 / sm_121 support 2,048 threads/SM
+- Blackwell's sm_120 supports 2,048 threads/SM
 - 1024 threads/block = 2 blocks/SM = 100% occupancy on Blackwell
 - But only 66.7% occupancy on RTX 3090
 

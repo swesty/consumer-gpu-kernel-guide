@@ -198,7 +198,7 @@ Example (RTX 3090, 1024 threads/block):
 ```
 
 Three things limit occupancy:
-1. **Thread count**: Max threads per SM (1536 for sm_86, 2048 for sm_120/sm_121/sm_121a)
+1. **Thread count**: Max threads per SM (1536 for sm_86, 2048 for sm_120/sm_121a)
 2. **Register usage**: 65536 registers / (threads_per_block x registers_per_thread) = max blocks
 3. **Shared memory**: Shared memory per SM / shared memory per block = max blocks
 
@@ -337,7 +337,7 @@ The constraint is **max threads per SM**, which differs across architectures:
 ```
 sm_86 (RTX 3090):   1,536 threads/SM (48 warps)
 sm_120 (RTX 5090):  2,048 threads/SM (64 warps)
-sm_121 (RTX 6000):  2,048 threads/SM (64 warps)
+sm_120 (RTX 6000):  2,048 threads/SM (64 warps)
 sm_121a (GB10):     2,048 threads/SM (64 warps)
 ```
 
@@ -426,8 +426,8 @@ The `cuda-capabilities` field in `build.toml` tells the compiler which GPU archi
 |-----|-------------------|-----------|------------------|
 | RTX 3090 | `"8.6"` | `-arch=sm_86` | 11.1+ |
 | RTX 5090 | `"12.0"` | `-arch=sm_120` | 12.8+ |
-| RTX 6000 Pro | `"12.1"` | `-arch=sm_121` | 12.8+ |
-| GB10 | `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | 12.8+ |
+| RTX 6000 Pro | `"12.0"` | `-arch=sm_120` | 12.8+ |
+| GB10 | `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | 12.9+ |
 
 Targeting the wrong architecture means the GPU either can't run the code (too new) or runs it suboptimally (missing hardware features). Always match exactly.
 
@@ -439,7 +439,7 @@ Targeting the wrong architecture means the GPU either can't run the code (too ne
 | **Unroll depth** | 4 | 4 | 4 | 8 |
 | **Min grid size** | >= 82 | >= 170 | >= 188 | >= 48 |
 | **Vectorization** | bf162/half2/float4 | bf162/half2/float4 | bf162/half2/float4 | bf162/half2/float4 |
-| **cuda-capabilities** | `"8.6"` | `"12.0"` | `"12.1"` | `"12.1"` |
+| **cuda-capabilities** | `"8.6"` | `"12.0"` | `"12.0"` | `"12.1"` |
 
 ---
 
@@ -558,7 +558,7 @@ static inline int compute_threads_vec2(int hidden_size) {
 
 The RTX 5090 is the **highest bandwidth consumer GPU** in this set. Its constraint profile is dominated by one thing: **32 GB VRAM**.
 
-While the kernel execution hardware is nearly identical to the RTX 6000 Pro (same GB202 die, same GDDR7, same 1.79 TB/s — sm_120 vs sm_121), the 32 GB capacity limits what models fit. The 5090 is the GPU where model fit strategy matters most — FP8/FP4 quantization (supported by 5th-gen Tensor Cores) is the key to fitting larger models.
+While the kernel execution hardware is nearly identical to the RTX 6000 Pro (same sm_120, same GDDR7, same 1.79 TB/s), the 32 GB capacity limits what models fit. The 5090 is the GPU where model fit strategy matters most — FP8/FP4 quantization (supported by 5th-gen Tensor Cores) is the key to fitting larger models.
 
 The 5090 has 170 SMs — more than the 3090's 82 or the GB10's 48, but fewer than the RTX 6000 Pro's 188. Short sequences (< 170 rows) underutilize the GPU. For single-token decode, individual kernels are extremely fast (1.79 TB/s), making kernel launch overhead a proportionally larger fraction of total time.
 
@@ -600,7 +600,7 @@ The 5090 is the sweet spot for Qwen3-8B BF16. For Qwen3-14B, FP8 is the right st
 
 ---
 
-### RTX 6000 Pro (Blackwell, sm_121)
+### RTX 6000 Pro (Blackwell, sm_120)
 
 #### Hardware Quick Reference
 
@@ -608,7 +608,7 @@ The 5090 is the sweet spot for Qwen3-8B BF16. For Qwen3-14B, FP8 is the right st
 ┌─────────────────────────────────────────┐
 │     RTX 6000 Pro Blackwell (GB202)      │
 ├─────────────────────────────────────────┤
-│ Compute:  sm_121, 188 SMs, 24064 cores  │
+│ Compute:  sm_120, 188 SMs, 24064 cores  │
 │ Memory:   96 GB GDDR7, 1.79 TB/s       │
 │ L2:       128 MB                        │
 │ Shared:   128 KB/SM (up to 228 KB)      │
@@ -646,7 +646,7 @@ for (int i = tid; i < vec_hidden; i += stride) {
 }
 ```
 
-**Effectively identical to the RTX 5090.** Same GB202 architecture (sm_121 vs the 5090's sm_120), same GDDR7 memory, same thread/block configuration. The kernel code is the same — the difference is what you can do at the system level (larger models, bigger batches, longer contexts).
+**Identical to the RTX 5090.** Same sm_120 architecture, same GDDR7 memory, same thread/block configuration. The kernel code is the same — the difference is what you can do at the system level (larger models, bigger batches, longer contexts).
 
 **Why 188 SMs matters**: You need >= 188 blocks (rows) to fully utilize the GPU. For batch=1, seq_len=128, only 68% of SMs are active. The RTX 6000 Pro reaches full utilization at longer sequences than any other GPU in this set.
 
@@ -786,7 +786,7 @@ Here are the three lines that actually change across the four kernel files:
 |------|---------------|------------------|----------------------|
 | `rtx-3090/.../rmsnorm.cu` | 512 | 4 | `"8.6"` |
 | `rtx-5090/.../rmsnorm.cu` | 1024 | 4 | `"12.0"` |
-| `rtx-6000-pro/.../rmsnorm.cu` | 1024 | 4 | `"12.1"` |
+| `rtx-6000-pro/.../rmsnorm.cu` | 1024 | 4 | `"12.0"` |
 | `GB10/.../rmsnorm.cu` | 512 | 8 | `"12.1"` |
 
 Everything else — the vectorization strategy, the two-phase reduce-then-normalize algorithm, the warp shuffle reduction, the block reduce via shared memory, the type conversion helpers — is identical across all four GPUs. The algorithm doesn't change. The tuning does.
@@ -1055,8 +1055,7 @@ The `cuda-capabilities` field maps directly to NVCC's `-arch` flag:
 | build.toml | NVCC flag | GPU |
 |------------|-----------|-----|
 | `"8.6"` | `-arch=sm_86` | RTX 3090 |
-| `"12.0"` | `-arch=sm_120` | RTX 5090 |
-| `"12.1"` | `-arch=sm_121` | RTX 6000 Pro |
+| `"12.0"` | `-arch=sm_120` | RTX 5090, RTX 6000 Pro |
 | `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | GB10 |
 
 ---

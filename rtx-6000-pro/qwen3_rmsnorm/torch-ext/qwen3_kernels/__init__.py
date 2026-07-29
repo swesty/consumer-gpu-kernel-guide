@@ -1,5 +1,5 @@
 """
-Qwen3 RMSNorm CUDA Kernels — RTX 6000 Pro Blackwell (sm_121)
+Qwen3 RMSNorm CUDA Kernels — RTX 6000 Pro Blackwell (sm_120)
 
 Vectorized RMSNorm kernel optimized for Qwen3-8B:
   - hidden_size=4096 (layer norms)

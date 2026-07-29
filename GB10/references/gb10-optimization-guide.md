@@ -34,7 +34,7 @@ Deep dive into GB10 (DGX Spark) specific optimizations for LLM inference CUDA ke
 | Memory Size | 128 GB | 96 GB | 32 GB |
 | L2 Cache | 24 MB | 128 MB | 96 MB |
 | TDP | 140W (SoC) | 600W | 575W |
-| Compute Cap | sm_121a | sm_121 | sm_120 |
+| Compute Cap | sm_121a | sm_120 | sm_120 |
 
 ### What Makes GB10 Unique
 
@@ -412,7 +412,7 @@ nvcc \
 | `--threads=4` | Parallel ptxas compilation |
 | `-maxrregcount=N` | Limit registers (rarely needed) |
 
-**Requires CUDA Toolkit 12.8+** for sm_121a support. Check with:
+**Requires CUDA Toolkit 12.9+** for sm_121a support (compute capability 12.1 targets were added in CUDA 12.9). Check with:
 ```bash
 nvcc --list-gpu-arch | grep 121
 ```
@@ -717,7 +717,7 @@ Fix: Include all required headers:
 ```
 nvcc fatal: Unsupported gpu architecture 'compute_121a'
 ```
-Fix: Requires CUDA Toolkit 12.8+. Check version:
+Fix: Requires CUDA Toolkit 12.9+. Check version:
 ```bash
 nvcc --version
 ```

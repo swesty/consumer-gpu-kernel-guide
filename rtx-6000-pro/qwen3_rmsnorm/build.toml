@@ -5,4 +5,4 @@ backends = ["cuda"]
 [kernel.rmsnorm]
 backend = "cuda"
 src = ["kernel_src/rmsnorm.cu"]
-cuda-capabilities = ["12.1"]
+cuda-capabilities = ["12.0"]
