@@ -437,6 +437,14 @@ nvcc \
 
 **Requires CUDA Toolkit 12.8+** for sm_120 support.
 
+**Building one binary for the whole Blackwell fleet.** The flags above already cover all three
+Blackwell GPUs in this repo: `sm_120` SASS is forward-compatible across minor revisions, so it
+also loads on the CC 12.1 GB10 (verified by launching a PTX-free binary there). If you want
+family-specific features as well, swap in `-gencode=arch=compute_120f,code=sm_120f` — same
+coverage, requires CUDA 12.9+. Avoid `sm_121a` unless you are targeting GB10 exclusively; it
+will not load here. See [Blackwell target suffixes](../../guides/tuning-guide.md) for the
+measured compatibility matrix.
+
 ### setup.py Configuration
 
 ```python

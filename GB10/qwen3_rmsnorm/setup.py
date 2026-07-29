@@ -29,9 +29,9 @@ setup(
                 "cxx": ["-O3"],
                 "nvcc": [
                     "-O3",
-                    # GB10 DGX Spark: sm_121a native, portable PTX fallback
-                    "-gencode=arch=compute_121a,code=sm_121a",
-                    "-gencode=arch=compute_120,code=compute_120",  # Portable PTX fallback
+                    # GB10 DGX Spark: sm_121a native + sm_120f family fallback (CUDA 12.9+)
+                    "-gencode=arch=compute_121a,code=sm_121a",   # CC 12.1 only
+                    "-gencode=arch=compute_120f,code=sm_120f",   # Any CC 12.x, no JIT
                     "--use_fast_math",
                     "-lineinfo",             # For profiling with ncu/nsys
                     "--threads=4",           # Parallel compilation

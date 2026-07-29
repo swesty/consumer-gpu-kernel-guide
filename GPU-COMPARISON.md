@@ -74,6 +74,24 @@ Recommended settings for RMSNorm-class reduction kernels (hidden_size=4096, BF16
 - **RTX 3090 uses 512 threads, unroll 4** — sm_86 limits threads/SM to 1,536; using 1024 threads/block would give only 1 block/SM (66.7% occupancy). GDDR6X latency (~100 ns) is low enough for unroll 4.
 - **RTX 5090 / RTX 6000 Pro use 1024 threads, unroll 4** — sm_120 supports 2,048 threads/SM, so 2 blocks of 1024 achieves 100% occupancy with less scheduling overhead. GDDR7 latency is low.
 
+### Build target compatibility (Blackwell)
+
+The Blackwell parts split across two compute capabilities (12.0 for the GDDR7 cards, 12.1 for
+GB10), so a single build target does not always cover them. Measured by launching SASS-only
+binaries — no embedded PTX, so no JIT rescue:
+
+| Built for | RTX 5090 / RTX 6000 Pro (CC 12.0) | GB10 (CC 12.1) | Min CUDA |
+|-----------|:---------------------------------:|:--------------:|:--------:|
+| `sm_120` | runs | runs | 12.8+ |
+| `sm_120f` | runs | runs | 12.9+ |
+| `sm_121` | fails | runs | 12.9+ |
+| `sm_121a` | fails | runs | 12.9+ |
+
+`sm_120` covers all three (cubins are forward-compatible across minor revisions). `sm_120f` adds
+family-specific features at the same coverage. The `a` suffix is architecture-specific and loads
+on CC 12.1 only — failures show up at launch as `no kernel image is available for execution on
+the device`. See [guides/tuning-guide.md](guides/tuning-guide.md) for flag recipes.
+
 ## Model Fit (Qwen3 Family, BF16)
 
 | Model | Size (BF16) | GB10 (128 GB) | RTX 3090 (24 GB) | RTX 5090 (32 GB) | RTX 6000 Pro (96 GB) |

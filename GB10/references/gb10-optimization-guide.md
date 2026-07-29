@@ -8,7 +8,7 @@ Deep dive into GB10 (DGX Spark) specific optimizations for LLM inference CUDA ke
 
 | Component | Specification | Notes |
 |-----------|---------------|-------|
-| Compute Capability | 12.1 (sm_121a) | Arch-specific target; ship `compute_120` PTX for portability |
+| Compute Capability | 12.1 (sm_121a) | Arch-specific target; pair with `sm_120f` for fleet-portable builds |
 | SMs | 48 | ~3.9x fewer than RTX 6000 Pro (188) |
 | CUDA Cores | 6,144 | 128 per SM |
 | Tensor Cores | 192 | 5th gen, FP4/FP8/FP16/BF16 |
@@ -394,8 +394,8 @@ Achieving 40-60% of peak bandwidth is realistic:
 ```bash
 nvcc \
     -O3 \
-    -gencode=arch=compute_121a,code=sm_121a \  # Native sm_121a
-    -gencode=arch=compute_120,code=compute_120 \ # Portable PTX fallback
+    -gencode=arch=compute_121a,code=sm_121a \  # GB10-native, CC 12.1 only
+    -gencode=arch=compute_120f,code=sm_120f \  # Family SASS, any CC 12.x
     --use_fast_math \
     -lineinfo \
     --threads=4 \
@@ -405,17 +405,29 @@ nvcc \
 **Key flags:**
 | Flag | Purpose |
 |------|---------|
-| `-gencode=arch=compute_121a,code=sm_121a` | Native SASS for sm_121a (arch-specific features) |
-| `-gencode=arch=compute_120,code=compute_120` | Portable PTX fallback (JIT on other 12.x parts) |
+| `-gencode=arch=compute_121a,code=sm_121a` | Native SASS, GB10-only arch-specific features |
+| `-gencode=arch=compute_120f,code=sm_120f` | Family SASS, loads on any CC 12.x — no JIT |
 | `--use_fast_math` | Fast `rsqrtf`, `__expf`, etc. |
 | `-lineinfo` | Debug info for ncu/nsys without performance loss |
 | `--threads=4` | Parallel ptxas compilation |
 | `-maxrregcount=N` | Limit registers (rarely needed) |
 
-**Requires CUDA Toolkit 12.9+** for sm_121a support (compute capability 12.1 targets were added in CUDA 12.9). Check with:
+**Requires CUDA Toolkit 12.9+** — compute capability 12.1 targets (`sm_121`, `sm_121a`) and the
+family-specific `sm_120f` target were all added in CUDA 12.9. Check with:
 ```bash
 nvcc --list-gpu-arch | grep 121
 ```
+
+**Why `sm_120f` and not a PTX fallback.** `sm_121a` is architecture-specific: it loads on GB10 and
+nowhere else, failing on CC 12.0 parts with `no kernel image is available for execution on the
+device`. The second gencode line covers everything else. Shipping `sm_120f` SASS beats shipping
+`compute_120` PTX because the family target loads directly on any CC 12.x device with no JIT step,
+so there is no first-launch compile pause and no dependency on the end user's driver being able to
+compile the PTX. Drop the `sm_121a` line entirely if you do not need GB10-exclusive features —
+`sm_120f` alone runs on all three Blackwell GPUs in this repo.
+
+See [Blackwell target suffixes](../../guides/tuning-guide.md) in the tuning guide for the measured
+compatibility matrix.
 
 ### setup.py Configuration
 
@@ -425,7 +437,7 @@ extra_compile_args={
     "nvcc": [
         "-O3",
         "-gencode=arch=compute_121a,code=sm_121a",
-        "-gencode=arch=compute_120,code=compute_120",
+        "-gencode=arch=compute_120f,code=sm_120f",
         "--use_fast_math",
         "-lineinfo",
         "--threads=4",

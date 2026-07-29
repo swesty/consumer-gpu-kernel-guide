@@ -429,7 +429,58 @@ The `cuda-capabilities` field in `build.toml` tells the compiler which GPU archi
 | RTX 6000 Pro | `"12.0"` | `-arch=sm_120` | 12.8+ |
 | GB10 | `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | 12.9+ |
 
-Targeting the wrong architecture means the GPU either can't run the code (too new) or runs it suboptimally (missing hardware features). Always match exactly.
+Targeting the wrong architecture means the GPU either can't run the code or runs it suboptimally (missing hardware features).
+
+#### Blackwell target suffixes: plain, `f`, and `a`
+
+The three Blackwell GPUs here are not all the same compute capability — the RTX 5090 and
+RTX 6000 Pro are CC 12.0, GB10 is CC 12.1. CUDA 12.9 added a *family-specific* target class
+(`f` suffix) alongside the existing *architecture-specific* one (`a` suffix):
+
+| Suffix | Meaning | Runs on |
+|--------|---------|---------|
+| none (`sm_120`) | Baseline SASS for that CC | That CC, plus later minor revisions of the same major version |
+| `f` (`sm_120f`) | Family-specific features (CUDA 12.9+) | Any CC 12.x device at or above the named minor |
+| `a` (`sm_121a`) | Architecture-specific features | **Only** that exact CC |
+
+Measured on the hardware this guide documents. A trivial kernel was built as SASS only —
+no embedded PTX, so nothing can be rescued by JIT — then actually launched:
+
+| Built for | RTX 6000 Pro / RTX 5090 (CC 12.0) | GB10 (CC 12.1) |
+|-----------|-----------------------------------|----------------|
+| `sm_120` | runs | runs |
+| `sm_120f` | runs | runs |
+| `sm_121` | `no kernel image is available` | runs |
+| `sm_121a` | `no kernel image is available` | runs |
+
+Two things follow:
+
+1. **Plain `sm_120` already covers all three GPUs.** Cubins are forward-compatible across
+   minor revisions within a major version, so sm_120 SASS loads on the CC 12.1 GB10. You do
+   not need a fallback path purely for coverage.
+2. **`a` targets are strictly single-CC.** `sm_121a` will not load on a CC 12.0 part — it
+   fails at launch with `no kernel image is available for execution on the device`. Use it
+   only when you want GB10-exclusive features and are shipping GB10-only binaries.
+
+#### Choosing a target
+
+| Goal | Flags |
+|------|-------|
+| One binary, whole Blackwell fleet, simplest | `-arch=sm_120` |
+| One binary, whole fleet, family features (CUDA 12.9+) | `-gencode=arch=compute_120f,code=sm_120f` |
+| Best code per GPU, single fat binary | `-gencode=arch=compute_120f,code=sm_120f -gencode=arch=compute_121a,code=sm_121a` |
+| GB10 only, maximum arch-specific features | `-gencode=arch=compute_121a,code=sm_121a` |
+
+The fat-binary form builds, runs, and carries both SASS variants:
+
+```bash
+$ cuobjdump -sass ./your_binary | grep -o 'arch = sm_[0-9a-z]*' | sort -u
+arch = sm_120f
+arch = sm_121a
+```
+
+The driver picks the exact CC match when one is present, so GB10 loads the `sm_121a` code
+and CC 12.0 parts load `sm_120f`. Neither path JITs, so there is no first-launch compile pause.
 
 ### Summary: All Four Knobs by GPU
 
@@ -1055,8 +1106,9 @@ The `cuda-capabilities` field maps directly to NVCC's `-arch` flag:
 | build.toml | NVCC flag | GPU |
 |------------|-----------|-----|
 | `"8.6"` | `-arch=sm_86` | RTX 3090 |
-| `"12.0"` | `-arch=sm_120` | RTX 5090, RTX 6000 Pro |
-| `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | GB10 |
+| `"12.0"` | `-arch=sm_120` | RTX 5090, RTX 6000 Pro (also loads on GB10) |
+| `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | GB10 only |
+| `"12.0"` | `-gencode=arch=compute_120f,code=sm_120f` | Any CC 12.x, CUDA 12.9+ |
 
 ---
 
