@@ -1,0 +1,16 @@
+cap 1024: 1 line(s) set
+cap 512: 1 line(s) set
+cap 384: 1 line(s) set
+cap 256: 1 line(s) set
+CAP rep1 RESULT {"label": "cap1024", "t": {"64x4096": 3.635, "512x4096": 15.699, "4096x4096": 306.511, "16384x4096": 1205.12}}
+CAP rep1 RESULT {"label": "cap512", "t": {"64x4096": 2.429, "512x4096": 8.018, "4096x4096": 302.59, "16384x4096": 1179.054}}
+CAP rep1 RESULT {"label": "cap384", "t": {"64x4096": 2.553, "512x4096": 8.265, "4096x4096": 301.696, "16384x4096": 1183.291}}
+CAP rep1 RESULT {"label": "cap256", "t": {"64x4096": 2.798, "512x4096": 7.766, "4096x4096": 304.883, "16384x4096": 1188.673}}
+CAP rep2 RESULT {"label": "cap1024", "t": {"64x4096": 3.629, "512x4096": 15.7, "4096x4096": 307.516, "16384x4096": 1217.248}}
+CAP rep2 RESULT {"label": "cap512", "t": {"64x4096": 2.427, "512x4096": 8.001, "4096x4096": 301.477, "16384x4096": 1174.022}}
+CAP rep2 RESULT {"label": "cap384", "t": {"64x4096": 2.533, "512x4096": 8.285, "4096x4096": 302.894, "16384x4096": 1182.691}}
+CAP rep2 RESULT {"label": "cap256", "t": {"64x4096": 2.731, "512x4096": 7.792, "4096x4096": 307.148, "16384x4096": 1188.42}}
+ptxas info    : Used 27 registers, used 0 barriers
+ptxas info    : Used 30 registers, used 0 barriers
+ptxas info    : Used 38 registers, used 0 barriers
+DONE

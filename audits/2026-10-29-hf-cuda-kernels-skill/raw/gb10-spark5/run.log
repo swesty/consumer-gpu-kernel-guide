@@ -1,0 +1,34 @@
+##### BUILD GB10
+exit=0
+  so: /k/src/GB10/qwen3_rmsnorm/torch-ext/qwen3_kernels/_C.cpython-312-aarch64-linux-gnu.so
+  so: /k/src/GB10/qwen3_rmsnorm/build/lib.linux-aarch64-cpython-312/qwen3_kernels/_C.cpython-312-aarch64-linux-gnu.so
+##### BUILD rtx-6000-pro
+exit=0
+  so: /k/src/rtx-6000-pro/qwen3_rmsnorm/torch-ext/qwen3_kernels/_C.cpython-312-aarch64-linux-gnu.so
+  so: /k/src/rtx-6000-pro/qwen3_rmsnorm/build/lib.linux-aarch64-cpython-312/qwen3_kernels/_C.cpython-312-aarch64-linux-gnu.so
+RESULT {"name": "NVIDIA GB10", "cc": "12.1", "sms": 48, "max_threads_per_sm": 1536, "l2_bytes": 25165824, "smem_per_sm": 102400, "regs_per_sm": 65536, "torch": "2.13.0+cu130", "cuda": "13.0"}
+##### GB10 correct
+  GB10 RESULT {"case": "zero_rows", "raised": "AcceleratorError: CUDA error: invalid argument"}
+  GB10 RESULT {"case": "weight_fp32_input_bf16", "max_abs_vs_exact": NaN, "finite": false, "raised": null}
+  GB10 RESULT {"case": "out_fp32_input_bf16", "max_abs_vs_exact": 5.4042768478393555, "out_dtype": "torch.float32", "raised": null}
+  GB10 RESULT {"case": "out_too_small", "neighbour_row_clobbered": true, "raised": null}
+  GB10 RESULT {"case": "noncontig_out", "max_abs_vs_exact": 5.625, "raised": null}
+  GB10 RESULT {"case": "misaligned_bf16", "is_contiguous": true, "raised": "AcceleratorError: CUDA error: misaligned address"}
+  GB10 RESULT {"case": "misaligned_fp32", "is_contiguous": true, "raised": "AcceleratorError: CUDA error: misaligned address"}
+  GB10 RESULT {"case": "torch_compile", "graph_breaks": 1, "break_reasons": ["Attempted to call function marked as skipped\n  Explanation: Dynamo does not know how to trace the builtin `qwen3_kernels._C.pybind11_detail_function_record_v1_s"], "raised": null}
+##### rtx-6000-pro correct
+  rtx-6000-pro RESULT {"case": "zero_rows", "raised": "AcceleratorError: CUDA error: invalid argument"}
+  rtx-6000-pro RESULT {"case": "weight_fp32_input_bf16", "max_abs_vs_exact": NaN, "finite": false, "raised": null}
+  rtx-6000-pro RESULT {"case": "out_fp32_input_bf16", "max_abs_vs_exact": 5.8592634201049805, "out_dtype": "torch.float32", "raised": null}
+  rtx-6000-pro RESULT {"case": "out_too_small", "neighbour_row_clobbered": true, "raised": null}
+  rtx-6000-pro RESULT {"case": "noncontig_out", "max_abs_vs_exact": 7.015625, "raised": null}
+  rtx-6000-pro RESULT {"case": "misaligned_bf16", "is_contiguous": true, "raised": "AcceleratorError: CUDA error: misaligned address"}
+  rtx-6000-pro RESULT {"case": "misaligned_fp32", "is_contiguous": true, "raised": "AcceleratorError: CUDA error: misaligned address"}
+  rtx-6000-pro RESULT {"case": "torch_compile", "graph_breaks": 1, "break_reasons": ["Attempted to call function marked as skipped\n  Explanation: Dynamo does not know how to trace the builtin `qwen3_kernels._C.pybind11_detail_function_record_v1_s"], "raised": null}
+##### GB10 perf
+rt_frame.py:1994] [0/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W1029 14:35:46.875000 608 torch/_dynamo/convert_frame.py:1994] [0/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
+##### rtx-6000-pro perf
+rt_frame.py:1994] [0/8] To log all recompilation reasons, use TORCH_LOGS="recompiles".
+W1029 14:36:24.372000 757 torch/_dynamo/convert_frame.py:1994] [0/8] To diagnose recompilation issues, see https://docs.pytorch.org/docs/main/user_guide/torch_compiler/compile/programming_model.recompilation.html
+DONE

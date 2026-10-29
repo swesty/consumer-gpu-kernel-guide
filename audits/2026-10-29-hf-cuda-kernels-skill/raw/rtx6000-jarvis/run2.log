@@ -1,0 +1,13 @@
+GRAPH GB10 RESULT [{"kind": "layer", "rows": 1, "h": 4096, "kernel_us": 2.082, "compile_us": 1.15, "copy_us": 0.69}, {"kind": "layer", "rows": 8, "h": 4096, "kernel_us": 2.328, "compile_us": 1.319, "copy_us": 0.685}, {"kind": "layer", "rows": 64, "h": 4096, "kernel_us": 2.442, "compile_us": 1.719, "copy_us": 0.765}, {"kind": "layer", "rows": 512, "h": 4096, "kernel_us": 3.203, "compile_us": 2.333, "copy_us": 1.591}, {"kind": "layer", "rows": 4096, "h": 4096, "kernel_us": 15.571, "compile_us": 13.332, "copy_us": 8.633}, {"kind": "qk", "rows": 32, "h": 128, "kernel_us": 1.295, "compile_us": 0.835, "copy_us": 0.691}, {"kind": "qk", "rows": 2048, "h": 128, "kernel_us": 1.875, "compile_us": 1.158, "copy_us": 0.747}, {"kind": "qk", "rows": 131072, "h": 128, "kernel_us": 59.132, "compile_us": 9.399, "copy_us": 8.64}]
+OWNBENCH GB10 ========================Correctness Verification========================
+OWNBENCH GB10   [1, 512, 4096]: max_diff=0.062500  rel_err=0.007812  [FAIL]
+OWNBENCH GB10   [4, 2048, 4096]: max_diff=0.062500  rel_err=0.007812  [FAIL]
+OWNBENCH GB10   [1, 2048, 128]: max_diff=0.062500  rel_err=0.007812  [FAIL]
+OWNBENCH GB10 
+GRAPH rtx-6000-pro RESULT [{"kind": "layer", "rows": 1, "h": 4096, "kernel_us": 1.778, "compile_us": 1.161, "copy_us": 0.694}, {"kind": "layer", "rows": 8, "h": 4096, "kernel_us": 1.875, "compile_us": 1.32, "copy_us": 0.692}, {"kind": "layer", "rows": 64, "h": 4096, "kernel_us": 2.003, "compile_us": 1.838, "copy_us": 0.876}, {"kind": "layer", "rows": 512, "h": 4096, "kernel_us": 4.869, "compile_us": 2.44, "copy_us": 1.714}, {"kind": "layer", "rows": 4096, "h": 4096, "kernel_us": 27.867, "compile_us": 13.496, "copy_us": 8.745}, {"kind": "qk", "rows": 32, "h": 128, "kernel_us": 1.298, "compile_us": 0.949, "copy_us": 0.806}, {"kind": "qk", "rows": 2048, "h": 128, "kernel_us": 1.978, "compile_us": 1.265, "copy_us": 0.87}, {"kind": "qk", "rows": 131072, "h": 128, "kernel_us": 59.212, "compile_us": 9.602, "copy_us": 8.783}]
+OWNBENCH rtx-6000-pro ========================Correctness Verification========================
+OWNBENCH rtx-6000-pro   [1, 512, 4096]: max_diff=0.062500  rel_err=0.007812  [FAIL]
+OWNBENCH rtx-6000-pro   [4, 2048, 4096]: max_diff=0.062500  rel_err=0.007812  [FAIL]
+OWNBENCH rtx-6000-pro   [1, 2048, 128]: max_diff=0.062500  rel_err=0.007812  [FAIL]
+OWNBENCH rtx-6000-pro 
+HAS_total_mem False HAS_total_memory True
