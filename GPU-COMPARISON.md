@@ -66,7 +66,7 @@ Recommended settings for RMSNorm-class reduction kernels (hidden_size=4096, BF16
 | **Grid size target** | >= 48 | >= 82 | >= 170 | >= 188 |
 | **BW target (% peak)** | > 30% | > 35% | > 35% | > 35% |
 | **`cuda-capabilities`** | `"12.1"` | `"8.6"` | `"12.0"` | `"12.0"` |
-| **Min CUDA Toolkit** | 12.9+ | 11.1+ | 12.8+ | 12.8+ |
+| **Min CUDA Toolkit** | 13.0+ | 11.1+ | 12.8+ | 12.8+ |
 
 **Why the differences:**
 
@@ -84,13 +84,20 @@ binaries — no embedded PTX, so no JIT rescue:
 |-----------|:---------------------------------:|:--------------:|:--------:|
 | `sm_120` | runs | runs | 12.8+ |
 | `sm_120f` | runs | runs | 12.9+ |
-| `sm_121` | fails | runs | 12.9+ |
-| `sm_121a` | fails | runs | 12.9+ |
+| `sm_121` | fails | runs | 13.0+ |
+| `sm_121a` | fails | runs | 13.0+ |
 
 `sm_120` covers all three (cubins are forward-compatible across minor revisions). `sm_120f` adds
 family-specific features at the same coverage. The `a` suffix is architecture-specific and loads
 on CC 12.1 only — failures show up at launch as `no kernel image is available for execution on
-the device`. See [guides/tuning-guide.md](guides/tuning-guide.md) for flag recipes.
+the device`.
+
+The toolkit floors differ per part, and the `a` suffix is not what sets them. CUDA 12.8 covers
+the CC 12.0 cards; the family-specific `f` target class arrived in CUDA 12.9 (PTX ISA 8.8); and
+NVIDIA gives CUDA 13.0 as the minimum toolkit for DGX Spark, so `sm_121` and `sm_121a` both need
+13.0 — inherited from CC 12.1 itself, not from the suffix. See
+[NVIDIA's CUTLASS overview](https://docs.nvidia.com/cutlass/latest/overview.html) for the
+per-product floors and [guides/tuning-guide.md](guides/tuning-guide.md) for flag recipes.
 
 ## Model Fit (Qwen3 Family, BF16)
 

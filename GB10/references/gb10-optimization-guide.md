@@ -412,8 +412,11 @@ nvcc \
 | `--threads=4` | Parallel ptxas compilation |
 | `-maxrregcount=N` | Limit registers (rarely needed) |
 
-**Requires CUDA Toolkit 12.9+** — compute capability 12.1 targets (`sm_121`, `sm_121a`) and the
-family-specific `sm_120f` target were all added in CUDA 12.9. Check with:
+**Requires CUDA Toolkit 13.0+** — NVIDIA gives CUDA 13.0 as the minimum toolkit for DGX Spark, so
+both compute capability 12.1 targets (`sm_121`, `sm_121a`) need it. The family-specific target
+class is separate and older: `f` targets arrived in CUDA 12.9 (PTX ISA 8.8), and `sm_120f` also
+covers GB10 — so a 12.9 toolkit can build for this GPU, just not via a `sm_121*` target. Check
+with:
 ```bash
 nvcc --list-gpu-arch | grep 121
 ```
@@ -729,7 +732,7 @@ Fix: Include all required headers:
 ```
 nvcc fatal: Unsupported gpu architecture 'compute_121a'
 ```
-Fix: Requires CUDA Toolkit 12.9+. Check version:
+Fix: Requires CUDA Toolkit 13.0+ for `sm_121*` targets. Check version:
 ```bash
 nvcc --version
 ```
@@ -1130,7 +1133,7 @@ Fusing quantization into compute kernels (e.g., `rms_norm + fp8_quant`) eliminat
 │ Regs/SM:    65,536                      │
 │ Threads/SM: 2,048                       │
 │ TDP:        140W (SoC)                  │
-│ CUDA:       >= 12.8 required            │
+│ CUDA:       >= 13.0 required            │
 ├─────────────────────────────────────────┤
 │ Compile:  -gencode compute_121a,sm_121a │
 │ Threads:  512 (reduction), 256 (elem)   │

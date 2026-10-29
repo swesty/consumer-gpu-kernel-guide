@@ -427,7 +427,7 @@ The `cuda-capabilities` field in `build.toml` tells the compiler which GPU archi
 | RTX 3090 | `"8.6"` | `-arch=sm_86` | 11.1+ |
 | RTX 5090 | `"12.0"` | `-arch=sm_120` | 12.8+ |
 | RTX 6000 Pro | `"12.0"` | `-arch=sm_120` | 12.8+ |
-| GB10 | `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | 12.9+ |
+| GB10 | `"12.1"` | `-gencode=arch=compute_121a,code=sm_121a` | 13.0+ |
 
 Targeting the wrong architecture means the GPU either can't run the code or runs it suboptimally (missing hardware features).
 
@@ -739,7 +739,7 @@ The 96 GB VRAM is the RTX 6000 Pro's key differentiator. While the kernel runs a
 │ Tensor:   5th gen (FP4/FP8/BF16)      │
 │ TDP:      140W (entire SoC)            │
 │ NVLink:   C2C (CPU-GPU, 600 GB/s)     │
-│ CUDA:     >= 12.8 required             │
+│ CUDA:     >= 13.0 required             │
 └─────────────────────────────────────────┘
 ```
 
