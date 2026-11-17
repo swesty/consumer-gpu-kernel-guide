@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta charset="utf-8">
+<title>SM120 / SM121 attention kernels — support map and research path</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212a; --ink:#e6e8ee; --dim:#8a91a3; --line:#2a2f3a;
+    --ok:#22c55e; --opt:#38bdf8; --part:#f59e0b; --no:#fb7185; --unk:#8a91a3;
+    --a:#a78bfa; --b:#38bdf8; --c:#f59e0b; --d:#f472b6; --e:#22c55e;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 -apple-system,BlinkMacSystemFont,"Inter","Segoe UI",sans-serif}
+  header{padding:18px 22px 6px;max-width:1240px}
+  h1{font-size:20px;margin:0 0 6px;text-wrap:balance}
+  h2{font-size:16px;margin:26px 0 6px}
+  h3{font-size:14px;margin:0 0 4px}
+  p{margin:0 0 10px;max-width:78ch}
+  .sub{color:var(--dim);font-size:13px;max-width:92ch}
+  code{font:12.5px ui-monospace,Menlo,monospace;background:#232836;border-radius:4px;padding:1px 5px;white-space:nowrap}
+  a{color:var(--opt)}
+  .tabs{display:flex;gap:6px;padding:12px 22px 0;flex-wrap:wrap}
+  .tab{background:var(--panel);border:1px solid var(--line);color:var(--dim);padding:8px 14px;border-radius:8px 8px 0 0;cursor:pointer;font:600 13px inherit}
+  .tab.on{color:var(--ink);background:var(--panel2);border-bottom-color:var(--panel2)}
+  main{background:var(--panel2);margin:0 22px 22px;border:1px solid var(--line);border-radius:0 10px 10px 10px;padding:16px 18px 22px}
+  section{display:none} section.on{display:block}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:8px;margin:8px 0 14px}
+  table{border-collapse:collapse;width:100%;min-width:860px;font-size:12.5px;table-layout:fixed}
+  th,td{padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+  th{background:var(--panel);color:var(--dim);font-weight:600;position:sticky;top:0}
+  tr:last-child td{border-bottom:0}
+  td b{color:#fff}
+  td code{white-space:normal;overflow-wrap:anywhere}
+  .chip{display:inline-block;border-radius:10px;padding:1px 8px;font-size:11.5px;font-weight:700;white-space:nowrap;border:1px solid}
+  .ok{color:var(--ok);border-color:var(--ok)} .opt{color:var(--opt);border-color:var(--opt)}
+  .part{color:var(--part);border-color:var(--part)} .no{color:var(--no);border-color:var(--no)}
+  .unk{color:var(--unk);border-color:var(--unk)}
+  .src{color:var(--dim);font-size:11px;border:1px dashed #3a4152;border-radius:4px;padding:0 4px;white-space:nowrap}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin:6px 0 12px;font-size:12px;color:var(--dim);align-items:center}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:8px 0 14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0}
+  .card p{font-size:13px}
+  .card .cap{color:var(--dim);font-size:12px}
+  .note{border-left:3px solid var(--part);background:#201c12;padding:8px 12px;border-radius:0 6px 6px 0;margin:10px 0;max-width:92ch;font-size:13px}
+  .note.info{border-color:var(--opt);background:#12202a}
+  .flow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+  .step{background:#232836;border:1px solid #3a4152;border-radius:6px;padding:4px 9px;font-size:12.5px}
+  .step.hi{border-color:var(--ok)} .step.ex{border-color:var(--opt);border-style:dashed}
+  .arr{color:var(--dim)}
+  .bar{height:14px;border-radius:3px;background:var(--b)}
+  .barrow{display:grid;grid-template-columns:130px 1fr 110px;gap:8px;align-items:center;font-size:12.5px;margin:5px 0}
+  .barrow span:last-child{color:var(--dim);font-variant-numeric:tabular-nums}
+  svg{display:block;width:100%;height:auto;max-width:760px}
+  svg text{font:12px -apple-system,BlinkMacSystemFont,"Inter",sans-serif;fill:var(--ink)}
+  svg .d{fill:var(--dim)} svg .s{font-size:11px}
+  .blocked{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px 16px;margin:14px 0}
+  .blocked h3{font-size:15px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}
+  @media (max-width:820px){.two{grid-template-columns:1fr} header,.tabs{padding-left:14px;padding-right:14px} main{margin:0 8px 16px;padding:12px}}
+  .where{font-size:12.5px;margin:6px 0 0}
+  .where li{margin:2px 0}
+  ul{padding-left:18px;margin:4px 0 10px;max-width:86ch}
+  .phase{display:grid;grid-template-columns:44px 1fr;gap:12px;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:14px 16px;margin:12px 0}
+  .phase .n{font:700 20px ui-monospace,Menlo,monospace;color:var(--a);border:1px solid var(--a);border-radius:8px;height:40px;display:grid;place-items:center}
+  .phase dl{display:grid;grid-template-columns:110px 1fr;gap:4px 10px;margin:6px 0 0;font-size:13px}
+  .phase dt{color:var(--dim)} .phase dd{margin:0}
+  @media (max-width:600px){.phase dl{grid-template-columns:1fr}.phase dt{margin-top:6px}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Attention kernels on RTX PRO 6000 Blackwell (SM120) and DGX Spark (SM121)</h1>
+  <p class="sub">What vLLM, SGLang and FlashInfer can actually run on the two workstation-Blackwell GPUs, which pieces are still in progress and why, and a research path for extending the FlashAttention / FlashInfer kernels. Snapshot taken <b>2026-11-17</b> from vLLM <code>main@f39d833</code> (pins <code>flashinfer-python==0.7.4</code>), SGLang <code>main@b2cc023f</code> (pins <code>flashinfer_python==0.7.4</code>), FlashInfer release notes through v0.7.4, and Dao-AILab/flash-attention issues and pull requests. Nothing on this page was measured for it on a GPU; every row is a documentation, source-code or issue-tracker reading, and each is tagged. The full source-level write-up, with file-and-line citations and published benchmark numbers, is in <a href="REPORT.md">REPORT.md</a>.</p>
+</header>
+
+<div class="tabs" role="tablist">
+  <button class="tab on" data-t="s1">1 · Supported today</button>
+  <button class="tab" data-t="s2">2 · In progress &amp; blocked</button>
+  <button class="tab" data-t="s3">3 · Research path</button>
+  <button class="tab" data-t="s4">4 · Sources</button>
+</div>
+
+<main>
+<!-- ============================ TAB 1 ============================ -->
+<section id="s1" class="on">
+  <div class="legend">
+    <span class="chip ok">default</span> picked with no flag
+    <span class="chip opt">opt-in</span> works, must be selected
+    <span class="chip part">partial</span> runs with a stated gap
+    <span class="chip no">no</span> rejected or absent
+    <span class="chip unk">unverified</span> gate passes, no evidence it runs
+    <span class="src">docs</span><span class="src">src</span><span class="src">rel</span><span class="src">issue</span> = where the claim comes from
+  </div>
+
+  <h2 style="margin-top:6px">Why these two GPUs are their own target</h2>
+  <p>A fast attention kernel has two halves: <b>staging</b> (getting K and V tiles from GPU memory into the small on-chip scratchpad called shared memory) and <b>math</b> (the tensor-core matrix multiply). Hopper and data-center Blackwell each have a special math instruction that SM120 and SM121 do not have, and the two workstation parts have less than half the shared memory. A kernel written for H100 or B200 therefore cannot simply be recompiled.</p>
+  <div class="grid">
+    <div class="card"><h3>Hopper · SM90 (H100)</h3>
+      <p class="cap">Staging: TMA bulk copy.<br>Math: <code>wgmma</code> — a whole warpgroup (4 warps) issues one asynchronous multiply; operands read straight from shared memory.</p>
+      <div class="barrow"><span>Shared memory</span><div class="bar" style="width:100%"></div><span>227 KB / block</span></div>
+      <p class="cap">Home of FlashAttention-3.</p></div>
+    <div class="card"><h3>Data-center Blackwell · SM100 (B200)</h3>
+      <p class="cap">Staging: TMA bulk copy.<br>Math: <code>tcgen05</code> — results accumulate in a dedicated tensor memory (TMEM), freeing registers.</p>
+      <div class="barrow"><span>Shared memory</span><div class="bar" style="width:100%"></div><span>227 KB / block</span></div>
+      <p class="cap">Home of FlashAttention-4's main path and FlashInfer's trtllm-gen kernels.</p></div>
+    <div class="card" style="border-color:var(--a)"><h3>Workstation Blackwell · SM120 / SM121</h3>
+      <p class="cap">Staging: TMA bulk copy <b>is</b> available, as is the older <code>cp.async</code>.<br>Math: <code>mma.sync</code> — each warp multiplies a 16×8 tile and keeps the result in its own registers. No <code>wgmma</code>, no <code>tcgen05</code>, no TMEM.</p>
+      <div class="barrow"><span>Shared memory</span><div class="bar" style="width:43.6%;background:var(--a)"></div><span>99 KB / block</span></div>
+      <p class="cap">Per SM the limit is 128 KB in NVIDIA's Blackwell tuning guide and 100 KB in its programming guide, so whether two 64 KB blocks share an SM is unsettled; query <code>cudaDevAttrMaxSharedMemoryPerMultiprocessor</code>. 48 warps per SM.<br>RTX 5090, RTX PRO 6000 Blackwell (SM120), DGX Spark GB10 (SM121).</p></div>
+  </div>
+
+  <h2>The two machines are not the same problem either</h2>
+  <div class="scroll"><table style="min-width:720px">
+    <tr><th></th><th>RTX PRO 6000 Blackwell</th><th>DGX Spark (GB10)</th><th>Why a kernel author cares</th></tr>
+    <tr><td>Compute capability</td><td>12.0 (<code>sm_120</code>)</td><td>12.1 (<code>sm_121</code>)</td><td>Same instruction family. Code gated on "major == 12" covers both; code gated on "== 12.0" silently excludes the Spark.</td></tr>
+    <tr><td>Host</td><td>x86-64, discrete card</td><td>aarch64, GPU shares memory with CPU</td><td>Spark wheels are thinner. FlashInfer CUDA-13 aarch64 wheels carry no native <code>sm_121a</code> binaries; the Spark runs SM120-family binaries <span class="src">rel v0.6.18</span>.</td></tr>
+    <tr><td>Streaming multiprocessors</td><td>≈188 (24,064 CUDA cores ÷ 128; confirm with <code>deviceQuery</code>)</td><td>48 <span class="src">vault note, deviceQuery</span></td><td>Any heuristic that sizes a grid or a KV split from the SM count must read the real number.</td></tr>
+    <tr><td>Memory</td><td>96 GB GDDR7, ≈1.8 TB/s (published spec, not measured here)</td><td>128 GB unified LPDDR5x, ≈273 GB/s (published spec, not measured here)</td><td>Decode mostly <i>reads</i> the KV cache. Roughly 6–7× less bandwidth means the Spark is limited by bytes moved long before it is limited by tensor-core scheduling.</td></tr>
+  </table></div>
+
+  <h2>What runs when you pass no flag</h2>
+  <div class="grid">
+    <div class="card"><h3>vLLM <span class="src">src: vllm/platforms/cuda.py</span></h3>
+      <p class="cap">Standard attention on compute-capability major 12 falls into the generic branch — the same list used for Ampere and Hopper, not the Blackwell (SM 10.x) list.</p>
+      <div class="flow"><span class="step hi">FLASH_ATTN → FA2</span><span class="arr">→</span><span class="step">FLASHINFER</span><span class="arr">→</span><span class="step">TRITON_ATTN</span><span class="arr">→</span><span class="step">FLEX_ATTENTION</span></div>
+      <div class="flow"><span class="step ex">b12x — never automatic</span></div>
+      <p class="cap">FA2 fails validation for an FP8 or NVFP4 KV cache, attention sinks, or a multimodal prefix; any of those moves the automatic choice to <code>FLASHINFER</code> (fa2 prefill + XQA decode, the latter only if FlashInfer's prebuilt binaries are reachable). FA4 is the default only when major == 10 ("restrict to SM100 for now" <span class="src">src: fa_utils.py</span>). MLA models on major 12: <code>TRITON_MLA</code>, then <code>FLASHINFER_MLA_SPARSE_SM120</code>.</p></div>
+    <div class="card"><h3>SGLang <span class="src">src: arg_groups/model_override_base.py</span></h3>
+      <p class="cap">SM12x matches none of the Hopper or SM100 cases and lands in the final <code>else</code>.</p>
+      <div class="flow"><span class="step hi">flashinfer</span><span class="arr">or, if the model has attention sinks →</span><span class="step">triton</span></div>
+      <div class="flow"><span class="step ex">fa4 · trtllm_mha — opt-in</span></div>
+      <p class="cap">MLA models on SM12x default to <code>triton</code>. Per-model override files can change these defaults and were not all audited.</p></div>
+  </div>
+
+  <h2>Standard attention (GQA / MHA / MQA) — kernel by kernel</h2>
+  <div class="scroll"><table>
+    <tr><th style="width:15%">Kernel</th><th style="width:21%">What it is</th><th style="width:15%">vLLM</th><th style="width:15%">SGLang</th><th>Stated limits on SM120 / SM121</th></tr>
+    <tr><td><b>FlashAttention-2</b><br><span class="cap">vLLM's bundled <code>vllm_flash_attn</code></span></td>
+      <td>The 2023 CUDA kernel: <code>cp.async</code> staging, <code>mma.sync</code> math. Portable to every GPU from Ampere on.</td>
+      <td><span class="chip ok">default</span> <span class="src">src</span></td>
+      <td><span class="chip no">no</span><br>no <code>fa2</code> backend value</td>
+      <td>KV cache dtypes <code>auto / float16 / bfloat16</code> only — no FP8 KV. No attention sinks. Block size multiple of 16. <span class="src">docs</span></td></tr>
+    <tr><td><b>FlashInfer fa2 prefill</b></td>
+      <td>FlashInfer's own FA2-style template kernel. On SM12x it is FlashInfer's only prefill inside vLLM ("SM12x prefill is fa2-only").</td>
+      <td><span class="chip opt">opt-in</span> / 2nd in auto <span class="src">src</span></td>
+      <td><span class="chip ok">default</span> <span class="src">src</span></td>
+      <td>Cannot consume FP8 queries; with an FP8 KV cache the query stays in model dtype. Misreads an NVFP4 KV cache at head size 64; no NVFP4 KV with sinks. <span class="src">src: flashinfer.py</span></td></tr>
+    <tr><td><b>FlashInfer XQA decode</b><br><span class="cap">from TensorRT-LLM</span></td>
+      <td>A decode-only kernel (few query tokens, long KV). Handles sliding window, attention sinks and ragged speculative-decode verification.</td>
+      <td><span class="chip opt">opt-in</span> via <code>FLASHINFER</code> (decode half) <span class="src">src</span></td>
+      <td><span class="chip opt">opt-in</span> <code>trtllm_mha</code> <span class="src">docs+src</span></td>
+      <td>Query must be BF16/FP16 even with FP8 KV. Reads NVFP4 KV on SM12x. Decode only — prefill needs another kernel. SGLang: for hybrid GDN models, decode only. <span class="src">src</span></td></tr>
+    <tr><td><b>FlashInfer FMHAv2 prefill</b><br><span class="cap">from TensorRT-LLM</span></td>
+      <td>The intended SM12x prefill kernel in FlashInfer; head dims 256 / 512 and sliding-window masks added in v0.6.14.</td>
+      <td><span class="chip no">no</span> not wired; prefill stays fa2 <span class="src">src</span></td>
+      <td><span class="chip opt">opt-in</span> <code>trtllm_mha</code> <span class="src">src</span></td>
+      <td>"does not support fp8_e4m3 KV cache or skip-softmax" on SM120; no context-parallel prefill. <span class="src">src: sglang attention_hook.py</span></td></tr>
+    <tr><td><b>b12x paged attention</b><br><span class="cap">in FlashInfer ≥ 0.7.2</span></td>
+      <td>A CuTe-DSL kernel family written specifically for SM120 / SM121. Causal decoder attention reading the paged KV cache directly.</td>
+      <td><span class="chip opt">opt-in</span> <code>--attention-backend b12x</code> <span class="src">docs+src</span></td>
+      <td><span class="chip no">no</span> on <code>main</code>; a DGX-Spark preview branch only, its PRs closed unmerged <span class="src">issue</span></td>
+      <td>BF16 queries only. KV: BF16 or FP8 e4m3. Head dims 128 / 192 / 256 (64 excluded pending flashinfer#6977). Page sizes 64 / 128. Sinks and sliding window yes. No non-causal, no multimodal prefix, no decode context parallelism. Prefill ("extend") runs eagerly, outside CUDA graphs. <span class="src">src: b12x.py</span></td></tr>
+    <tr><td><b>FA4 — upstream SM120 path</b><br><span class="cap">Dao-AILab <code>flash_fwd_sm120.py</code></span></td>
+      <td>FlashAttention-4's CuTe-DSL code with a separate <code>mma.sync</code> path for SM120.</td>
+      <td><span class="chip no">no</span> blocked — see tab 2 <span class="src">issue #2307</span></td>
+      <td><span class="chip no">no</span> uses its own kernels (next row)</td>
+      <td>Dense + variable-length BF16 forward merged (#2329). Paged KV asserts; <code>num_splits</code> asserted to 1; only FP16/BF16 accepted. <span class="src">issue #2307, #2996</span></td></tr>
+    <tr><td><b>SGLang SM12x FA4 kernels</b><br><span class="cap"><code>flash_attention_v4_sm120</code></span></td>
+      <td>"Architecture-owned" FA4 kernels SGLang maintains for major 12 (PR #32991, merged 2026-08-13).</td>
+      <td><span class="chip no">no</span></td>
+      <td><span class="chip opt">opt-in</span> <code>--attention-backend fa4</code> <span class="src">src</span></td>
+      <td>FP8 KV cache not yet native (PR #45871 open). Docs matrix lists FA4 with native page size 128, FP4 KV yes, FP8 KV no. Deterministic absorbed-MLA on fa4 needs SM100/SM110. <span class="src">docs+issue</span></td></tr>
+    <tr><td><b>Triton attention</b></td>
+      <td>Attention written in the Triton language; the compiler emits <code>mma.sync</code> for this target.</td>
+      <td><span class="chip opt">opt-in</span> / 3rd in auto <span class="src">docs</span></td>
+      <td><span class="chip opt">opt-in</span>; default when the model has sinks <span class="src">src</span></td>
+      <td>Broadest semantics: sinks, non-causal, multimodal prefix, FP8 and per-token-head KV. No decode context parallelism in vLLM. Performance relative to the others is unmeasured here.</td></tr>
+    <tr><td><b>FlashAttention-3</b></td><td>Hopper kernel built on <code>wgmma</code>.</td>
+      <td><span class="chip no">no</span> <span class="src">docs: 9.x</span></td><td><span class="chip no">no</span> raises <code>NotImplementedError</code> <span class="src">src</span></td><td>Instruction does not exist on SM12x.</td></tr>
+    <tr><td><b>trtllm-gen · CUTLASS FMHA</b></td><td>Data-center Blackwell kernels built on <code>tcgen05</code> / TMEM.</td>
+      <td><span class="chip no">no</span> <span class="src">docs: 10.x</span></td><td><span class="chip no">no</span></td><td>Instruction does not exist on SM12x.</td></tr>
+    <tr><td><b>Composite backends</b><br><span class="cap"><code>TRITON_FLASH_ATTN</code>, <code>TRITON_FLASHINFER</code></span></td><td>Route image-prefix queries to Triton and causal text to a fast kernel.</td>
+      <td><span class="chip no">no</span> Hopper / major-10 only <span class="src">src</span></td><td>—</td><td>Multimodal-prefix models on SM12x fall to <code>TRITON_ATTN</code> or <code>FLEX_ATTENTION</code> for all tokens.</td></tr>
+  </table></div>
+
+  <h2>MLA and sparse attention (DeepSeek, GLM, MiniMax families)</h2>
+  <p>These models do not use ordinary attention. MLA (multi-head latent attention) stores a compressed "latent" per token instead of full K and V; sparse variants attend only to a top-k subset of the context chosen by a cheap indexer. They need their own kernels.</p>
+  <div class="scroll"><table>
+    <tr><th style="width:24%">Kernel</th><th style="width:14%">Where</th><th style="width:20%">Status on SM12x</th><th>Notes</th></tr>
+    <tr><td><b><code>TRITON_MLA</code></b></td><td>vLLM; SGLang <code>triton</code></td><td><span class="chip ok">default</span> for MLA in both engines <span class="src">src</span></td><td>The fast MLA kernels (<code>FLASHINFER_MLA</code>, <code>CUTLASS_MLA</code>, <code>FLASHMLA</code>) are 9.x / 10.x only.</td></tr>
+    <tr><td><b><code>FLASHINFER_MLA_SPARSE_SM120</code></b></td><td>vLLM</td><td><span class="chip ok">auto</span> 2nd in the major-12 MLA list <span class="src">src+docs</span></td><td>BF16; KV <code>auto / fp8 / fp8_ds_mla</code>; block size multiple of 64. Covers DeepSeek-V4 (d_qk 512) and V3.2 / GLM-5.1 (d_qk 576) since FlashInfer v0.6.14.</td></tr>
+    <tr><td><b><code>FLASHINFER_MLA_SPARSE_DSV4</code> / <code>_DSV41</code></b></td><td>vLLM</td><td><span class="chip ok">default</span> for DeepSeek-V4 on SM12x <span class="src">docs</span></td><td>Capability "10.x, 12.x". DSV4: block 256, head 512, sinks. DSV41: block 128. DeepSeek-V4.1 dual cache (FP8 primary + optional FP4/FP8 extra) on SM120/SM121 since v0.7.1.</td></tr>
+    <tr><td><b>NVFP4 KV cache for sparse MLA</b></td><td>FlashInfer</td><td><span class="chip opt">opt-in</span> <span class="src">rel v0.7.0, v0.7.2</span></td><td><code>kv_cache_format="nvfp4"</code> on SM120/SM121 (v0.7.0). <code>backend="cake"</code> decode + prefill for RTX PRO 6000 / RTX 5090, and a mixed FP8/FP4 decode for SM120 and GB10 (v0.7.2). "These backends are opt-in."</td></tr>
+    <tr><td><b>GLM-4.7 FP8 prefill</b></td><td>FlashInfer</td><td><span class="chip part">partial</span> RTX PRO 6000 named; Spark not named <span class="src">rel v0.7.3</span></td><td>Release note heading names RTX PRO 6000 only.</td></tr>
+    <tr><td><b>DSA lightning indexer</b> <code>backend="sm120"</code></td><td>FlashInfer</td><td><span class="chip part">experimental</span> <span class="src">rel v0.7.4</span></td><td>FP8 or MXFP4, prefill and decode. Experimental APIs need a source install.</td></tr>
+    <tr><td><b>MiniMax-M3 sparse attention (MSA)</b></td><td>FlashInfer; vLLM <code>MINIMAX_M3_SPARSE</code></td><td><span class="chip ok">wired by the model</span> <span class="src">rel v0.6.16–17, docs</span></td><td>Rebuilt on warp-level <code>mma.sync</code>; FP8 or NVFP4 KV, paged or flat.</td></tr>
+    <tr><td><b><code>trtllm_mla</code></b></td><td>SGLang</td><td><span class="chip unk">unverified</span> <span class="src">src</span></td><td>Gate message says "SM100/SM12x"; no evidence found that it runs correctly on SM12x.</td></tr>
+    <tr><td><b>GLM-5.3-Flash DSA · DeepSeek-V4.1 on GB10</b></td><td>SGLang</td><td><span class="chip no">open bugs</span> <span class="src">issue</span></td><td>#40286 (no usable DSA backend on SM121), #42364 (fails at attention init on GB10), #50749 (SM120 TileLang DSA shared-memory overflow). Titles only; bodies not read.</td></tr>
+  </table></div>
+
+  <h2>What SGLang has that vLLM does not, on these GPUs</h2>
+  <ul>
+    <li><b>A working FA4 on SM12x.</b> SGLang ships its own major-12 FA4 kernels behind <code>--attention-backend fa4</code>. vLLM never selects FA4 on major 12 and its bundled upstream path cannot read a paged cache.</li>
+    <li><b>FMHAv2 prefill.</b> SGLang's <code>trtllm_mha</code> uses FlashInfer's FMHAv2 for prefill on SM120; vLLM's FlashInfer backend keeps SM12x prefill on fa2.</li>
+    <li><b>Per-phase backend flags.</b> <code>--prefill-attention-backend</code> and <code>--decode-attention-backend</code> let one server mix, for example, fa4 prefill with XQA decode — a ready-made A/B harness.</li>
+    <li><b>The reverse:</b> vLLM has b12x paged attention as a first-class backend; SGLang <code>main</code> uses b12x only for GEMM.</li>
+  </ul>
+  <div class="note info"><b>Your fleet, per your own vault note (last checked 2026-10-10, re-probe before relying on it):</b> the standard Spark image carried FlashInfer 0.6.16.post3 and the DeepSeek image 0.7.0. The b12x attention backend needs <code>flashinfer-python ≥ 0.7.2</code>, so it is absent from both until the image is rebuilt.</div>
+</section>
+
+<!-- ============================ TAB 2 ============================ -->
+<section id="s2">
+  <p>Each item below is something a fast kernel on SM120 / SM121 needs, that exists in some form, and that is unfinished, unmerged or switched off. Every card defines the idea from scratch, then lists where it stands.</p>
+
+  <div class="blocked">
+    <h3>Paged KV cache <span class="chip no">FA4 SM120: not merged</span> <span class="chip ok">b12x, FA2, FlashInfer: yes</span></h3>
+    <div class="two"><div>
+      <p><b>What it is.</b> While generating, a model keeps the keys and values (K and V) of every earlier token so it never recomputes them — the KV cache. A server handling many requests cannot give each one a single contiguous slab, because requests grow and finish at different times. So it cuts memory into fixed-size <b>pages</b> (blocks of, say, 16–128 tokens) and gives each request a <b>block table</b>: a list saying "my tokens 0–63 are in page 7, tokens 64–127 are in page 2…". It is virtual memory for attention.</p>
+      <p><b>Why it is hard for a kernel.</b> A kernel written for one contiguous tensor computes an address with a multiply. A paged kernel must look up the block table for every tile it loads, and a tile may straddle two pages that are nowhere near each other. That lookup sits in the hottest loop, and it complicates TMA, which wants one regular box of memory per copy.</p>
+      <ul class="where">
+        <li>Upstream FA4 SM120: "Paged KV not supported on SM 12.0" (assertion) <span class="src">issue #2307</span>. BF16 paged PR #2348 is open, needs a rebase, and is labelled non-TMA; #3060 (extend paged KV from SM90 to SM80/SM120) is open.</li>
+        <li>vLLM and SGLang store <i>only</i> paged caches, so a kernel without this cannot be served — which is why upstream FA4 on SM120 is unusable in vLLM even though its dense kernel works.</li>
+      </ul></div>
+      <svg viewBox="0 0 520 250" role="img" aria-label="A request's logical token sequence maps through a block table to scattered physical pages">
+        <text x="0" y="14" class="d s">What the model sees: one request's tokens, in order</text>
+        <g>
+          <rect x="0" y="22" width="78" height="30" rx="4" fill="#a78bfa"/><rect x="82" y="22" width="78" height="30" rx="4" fill="#a78bfa"/>
+          <rect x="164" y="22" width="78" height="30" rx="4" fill="#a78bfa"/><rect x="246" y="22" width="78" height="30" rx="4" fill="#a78bfa" opacity=".55"/>
+          <text x="39" y="42" text-anchor="middle" fill="#0f1115">0–63</text><text x="121" y="42" text-anchor="middle" fill="#0f1115">64–127</text>
+          <text x="203" y="42" text-anchor="middle" fill="#0f1115">128–191</text><text x="285" y="42" text-anchor="middle" fill="#0f1115">192–…</text>
+        </g>
+        <text x="0" y="84" class="d s">Block table (one row per request)</text>
+        <g font-family="ui-monospace,Menlo,monospace">
+          <rect x="0" y="92" width="324" height="28" rx="4" fill="#232836" stroke="#3a4152"/>
+          <text x="39" y="111" text-anchor="middle">7</text><text x="121" y="111" text-anchor="middle">2</text><text x="203" y="111" text-anchor="middle">11</text><text x="285" y="111" text-anchor="middle">4</text>
+        </g>
+        <g stroke="#a78bfa" stroke-width="1.5" fill="none">
+          <path d="M39 120 L372 216"/><path d="M121 120 L120 180"/><path d="M203 120 L456 216"/><path d="M285 120 L288 180"/>
+        </g>
+        <text x="0" y="170" class="d s">Physical pool shared by every request (pages 0–11)</text>
+        <g>
+          <!-- row 1: pages 0..5 -->
+          <rect x="0" y="180" width="78" height="26" rx="3" fill="#2b3140"/>
+          <rect x="84" y="180" width="78" height="26" rx="3" fill="#a78bfa"/><rect x="168" y="180" width="78" height="26" rx="3" fill="#38bdf8" opacity=".5"/>
+          <rect x="252" y="180" width="78" height="26" rx="3" fill="#a78bfa" opacity=".55"/><rect x="336" y="180" width="78" height="26" rx="3" fill="#2b3140"/>
+          <rect x="420" y="180" width="78" height="26" rx="3" fill="#38bdf8" opacity=".5"/>
+          <!-- row 2: pages 6..11 -->
+          <rect x="0" y="212" width="78" height="26" rx="3" fill="#38bdf8" opacity=".5"/><rect x="84" y="212" width="78" height="26" rx="3" fill="#f59e0b" opacity=".5"/>
+          <rect x="168" y="212" width="78" height="26" rx="3" fill="#2b3140"/><rect x="252" y="212" width="78" height="26" rx="3" fill="#f59e0b" opacity=".5"/>
+          <rect x="336" y="212" width="78" height="26" rx="3" fill="#a78bfa"/><rect x="420" y="212" width="78" height="26" rx="3" fill="#a78bfa"/>
+          <g class="s" text-anchor="middle">
+            <text x="39" y="198" class="d">free</text><text x="123" y="198" fill="#0f1115">page 2</text><text x="207" y="198">other</text><text x="291" y="198" fill="#0f1115">page 4</text><text x="375" y="198" class="d">free</text><text x="459" y="198">other</text>
+            <text x="39" y="230">other</text><text x="123" y="230">other</text><text x="207" y="230" class="d">free</text><text x="291" y="230">other</text><text x="375" y="230" fill="#0f1115">page 7</text><text x="459" y="230" fill="#0f1115">page 11</text>
+          </g>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <div class="blocked">
+    <h3>Split-KV decode <span class="chip no">FA4 SM120: forced to 1 split</span> <span class="chip part">FlashInfer runtime split-KV: data-center only</span></h3>
+    <div class="two"><div>
+      <p><b>What it is.</b> Attention work is normally divided along the <i>query</i> axis: each thread block takes a slab of query rows. During prefill there are thousands of query rows, so every part of the GPU is busy. During <b>decode</b> there is one new token — one query row — attending to the whole cache. Divide one row among blocks and you get one block: a single streaming multiprocessor walks the entire cache while the others idle.</p>
+      <p>Split-KV cuts the <i>other</i> axis. The long K/V sequence is divided into chunks, each chunk goes to a different block, and each block returns a partial output plus the log-sum-exp of its attention scores. A small final step uses those log-sum-exps to weight and merge the partials into exactly the answer one block would have produced.</p>
+      <p><b>Why it is hard.</b> The number of splits is a tuning decision that depends on batch size, context length and the number of multiprocessors (48 on the Spark, about 188 on the RTX PRO 6000). Too few leaves the GPU idle; too many pays launch and merge overhead for nothing — and with a full batch the query axis already fills the GPU, so splitting only costs.</p>
+      <ul class="where">
+        <li>Upstream FA4 SM120: <code>num_splits</code> is asserted to 1 <span class="src">issue #2307</span>; BF16 SplitKV PR #2336 open and stalled since 2026-08-14 <span class="src">issue #2996</span>; "per-batch SplitKV building blocks" PR #3108 open.</li>
+        <li>FlashInfer v0.7.4 added "automatic runtime split-KV" to its Prims-TS attention; that paragraph names B200 / B300 only <span class="src">rel</span>.</li>
+        <li>FA2, the vLLM default on SM12x, has had split-KV decode since 2023 — one concrete reason an "older" kernel can win decode.</li>
+      </ul></div>
+      <svg viewBox="0 0 520 300" role="img" aria-label="Without split-KV one block scans the whole cache; with split-KV four blocks scan a quarter each and a reduce step merges them">
+        <text x="0" y="14" class="d s">Decode without split-KV — 1 query row, 1 block does everything</text>
+        <rect x="0" y="24" width="500" height="22" rx="4" fill="#38bdf8" opacity=".35"/>
+        <text x="250" y="40" text-anchor="middle" class="s">KV cache: 32,000 tokens</text>
+        <rect x="0" y="54" width="120" height="30" rx="4" fill="#f59e0b"/><text x="60" y="74" text-anchor="middle" fill="#0f1115">block 0 →→→</text>
+        <g fill="#2b3140"><rect x="130" y="54" width="60" height="30" rx="4"/><rect x="196" y="54" width="60" height="30" rx="4"/><rect x="262" y="54" width="60" height="30" rx="4"/><rect x="328" y="54" width="60" height="30" rx="4"/><rect x="394" y="54" width="60" height="30" rx="4"/></g>
+        <text x="292" y="74" text-anchor="middle" class="d s">every other multiprocessor: idle</text>
+
+        <text x="0" y="124" class="d s">Decode with split-KV — same row, cache cut into 4 chunks</text>
+        <g><rect x="0" y="134" width="122" height="22" rx="4" fill="#38bdf8" opacity=".35"/><rect x="126" y="134" width="122" height="22" rx="4" fill="#38bdf8" opacity=".5"/>
+           <rect x="252" y="134" width="122" height="22" rx="4" fill="#38bdf8" opacity=".35"/><rect x="378" y="134" width="122" height="22" rx="4" fill="#38bdf8" opacity=".5"/></g>
+        <g fill="#f59e0b"><rect x="0" y="164" width="122" height="30" rx="4"/><rect x="126" y="164" width="122" height="30" rx="4"/><rect x="252" y="164" width="122" height="30" rx="4"/><rect x="378" y="164" width="122" height="30" rx="4"/></g>
+        <g text-anchor="middle" fill="#0f1115"><text x="61" y="184">block 0</text><text x="187" y="184">block 1</text><text x="313" y="184">block 2</text><text x="439" y="184">block 3</text></g>
+        <g text-anchor="middle" class="s"><text x="61" y="212">O₀, lse₀</text><text x="187" y="212">O₁, lse₁</text><text x="313" y="212">O₂, lse₂</text><text x="439" y="212">O₃, lse₃</text></g>
+        <g stroke="#8a91a3" fill="none"><path d="M61 218 L230 244"/><path d="M187 218 L240 244"/><path d="M313 218 L260 244"/><path d="M439 218 L270 244"/></g>
+        <rect x="130" y="246" width="240" height="34" rx="6" fill="#232836" stroke="#22c55e"/>
+        <text x="250" y="262" text-anchor="middle">reduce: O = Σ Oᵢ · exp(lseᵢ − lse)</text>
+        <text x="250" y="276" text-anchor="middle" class="d s">lse = log Σ exp(lseᵢ) — exact, not approximate</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="blocked">
+    <h3>FP8 and NVFP4 KV caches <span class="chip part">uneven across kernels</span></h3>
+    <div class="two"><div>
+      <p><b>What it is.</b> K and V are normally stored as 16-bit numbers (BF16). Storing them as 8-bit floats (FP8, format e4m3) halves the cache; NVFP4 stores 4-bit values plus one shared 8-bit scale per 16 values, about 4.5 bits each. A smaller cache means longer contexts in the same memory <i>and</i> fewer bytes to read on every decode step.</p>
+      <p><b>Why it is hard.</b> There are two ways to use a compressed cache. The easy way converts each tile back to 16-bit after loading it — memory is saved but the math is unchanged. The fast way feeds 8-bit operands directly to the tensor cores, which requires the query in FP8 as well, a per-tile or per-token scale carried through the softmax, and a kernel compiled for that instruction. Every combination (FP8 × paged, FP8 × split-KV, FP8 × sinks) is separate code.</p>
+      <ul class="where">
+        <li>FA2 (vLLM default on SM12x): no FP8 KV at all <span class="src">docs</span>.</li>
+        <li>FlashInfer on SM12x: FP8 / NVFP4 KV work, but the query stays 16-bit — "Architectures with only fa2 (e.g. SM89, SM120) cannot consume FP8 queries" <span class="src">src: vLLM flashinfer.py</span>.</li>
+        <li>FMHAv2 prefill on SM120: no <code>fp8_e4m3</code> KV <span class="src">src: SGLang</span>.</li>
+        <li>Upstream FA4 SM120: FP8 forward PRs #2980 and #3132 open. #2980's paged path "is FP8-only by contract" and rejects BF16 paged calls, so <i>neither</i> dtype has a complete merged paged path <span class="src">issue #2996</span>.</li>
+        <li>SGLang SM12x FA4: native FP8 KV is PR #45871, open <span class="src">issue</span>.</li>
+        <li>b12x: FP8 e4m3 KV accepted in vLLM source; the docs table still lists only <code>auto</code> — an unresolved docs/source disagreement.</li>
+      </ul></div>
+      <div>
+        <p class="cap">Bits stored per K or V element</p>
+        <div class="barrow"><span>BF16</span><div class="bar" style="width:100%"></div><span>16 bits</span></div>
+        <div class="barrow"><span>FP8 (e4m3)</span><div class="bar" style="width:50%;background:var(--c)"></div><span>8 bits</span></div>
+        <div class="barrow"><span>NVFP4</span><div class="bar" style="width:28.1%;background:var(--e)"></div><span>≈4.5 bits</span></div>
+        <p class="cap" style="margin-top:14px"><b>Worked example (arithmetic, not a measurement).</b> A hypothetical model with 32 layers, 8 KV heads and head dimension 128 stores 8 × 128 × 2 (K and V) × 2 bytes = 4,096 bytes per token per layer in BF16, so 128 KiB per token and 4 GiB for a 32,768-token context. One decode step must read all of it.</p>
+        <div class="barrow"><span>Spark, BF16</span><div class="bar" style="width:100%;background:var(--no)"></div><span>≈15.7 ms / token</span></div>
+        <div class="barrow"><span>Spark, FP8</span><div class="bar" style="width:50%;background:var(--c)"></div><span>≈7.9 ms</span></div>
+        <div class="barrow"><span>Spark, NVFP4</span><div class="bar" style="width:28.1%;background:var(--e)"></div><span>≈4.4 ms</span></div>
+        <div class="barrow"><span>PRO 6000, BF16</span><div class="bar" style="width:15.3%"></div><span>≈2.4 ms</span></div>
+        <p class="cap">Floor on time just to read the cache once, using published bandwidth figures (≈273 GB/s and ≈1.8 TB/s) that were not measured here. It ignores compute entirely. The inference: on the Spark, cache precision is likely the largest single lever for long-context decode; on the RTX PRO 6000 it is one lever among several.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="blocked">
+    <h3>TMA staging with warp-level math <span class="chip part">exists; correctness bug open in the GEMM cousin</span></h3>
+    <div class="two"><div>
+      <p><b>What it is.</b> TMA (tensor memory accelerator) is a hardware copy engine: one thread describes a box of a tensor and the engine moves it from GPU memory into shared memory in the background, signalling a barrier when done. The alternative, <code>cp.async</code>, has every thread issue its own small loads. TMA frees threads and registers for math and makes a <b>producer / consumer pipeline</b> natural: one warp keeps a ring of shared-memory slots full, the others drain it with <code>mma.sync</code>.</p>
+      <p><b>Why it is hard here.</b> Hopper kernels pair TMA with <code>wgmma</code>, which reads operands from shared memory directly. On SM12x the consumer warps must first pull each tile from shared memory into registers (<code>ldmatrix</code>) and then multiply. Two kinds of memory access now touch the same slot — the consumers' ordinary reads and the engine's asynchronous writes — and the hardware does not order them against each other unless the kernel issues an explicit fence. With only 99 KB there are few slots, so they are recycled aggressively.</p>
+      <ul class="where">
+        <li>flashinfer#7675, open since 2026-10-28: the b12x MXFP8 <b>GEMM</b> on SM120 returns wrong tiles under CUDA-graph replay with concurrent work, because a slot's TMA refill is not ordered after the consumers' reads. Reporter's one-line fix: <code>fence_proxy("async.shared")</code>; 1,537 bad replays → 0 in the reporter's sweep. Fix PR #7676 referenced, state not verified. <span class="src">issue</span></li>
+        <li>That report is about GEMM, not attention. It is listed because any TMA + <code>mma.sync</code> attention pipeline has the same hazard, and because eager-mode tests passed — only graph replay under load exposed it.</li>
+        <li>Upstream FA4's SM120 paged PR is explicitly "non-TMA" <span class="src">issue #2996</span>. b12x paged <i>decode</i> stages K/V with TMA, using the page id as a tensor coordinate; its prefill kernel mostly uses <code>cp.async</code>. Its paged-attention files contain no proxy fence, so whether the same hazard applies there is open <span class="src">src</span>.</li>
+      </ul></div>
+      <svg viewBox="0 0 520 290" role="img" aria-label="Timeline: a producer warp refills a shared-memory slot while consumer warps are still reading it unless a fence orders the two">
+        <text x="0" y="14" class="d s">Shared memory: a ring of tile slots (few fit in 99 KB)</text>
+        <g><rect x="0" y="22" width="120" height="30" rx="4" fill="#232836" stroke="#f59e0b" stroke-width="2"/><rect x="126" y="22" width="120" height="30" rx="4" fill="#232836" stroke="#3a4152"/><rect x="252" y="22" width="120" height="30" rx="4" fill="#232836" stroke="#3a4152"/>
+        <text x="60" y="42" text-anchor="middle">slot 0</text><text x="186" y="42" text-anchor="middle">slot 1</text><text x="312" y="42" text-anchor="middle">slot 2</text></g>
+
+        <text x="0" y="84" class="d s">Hazard — time →</text>
+        <text x="0" y="106" class="s">consumers</text><rect x="80" y="92" width="210" height="22" rx="4" fill="#38bdf8"/><text x="185" y="107" text-anchor="middle" fill="#0f1115" class="s">ldmatrix: read tile A from slot 0</text>
+        <text x="0" y="134" class="s">producer</text><rect x="210" y="120" width="230" height="22" rx="4" fill="#f472b6"/><text x="325" y="135" text-anchor="middle" fill="#0f1115" class="s">TMA: refill slot 0 with tile C</text>
+        <rect x="210" y="90" width="80" height="54" fill="none" stroke="#fb7185" stroke-width="2" stroke-dasharray="4 3"/>
+        <text x="296" y="160" fill="#fb7185" class="s">overlap: some threads read C, not A</text>
+
+        <text x="0" y="198" class="d s">With a fence — time →</text>
+        <text x="0" y="220" class="s">consumers</text><rect x="80" y="206" width="210" height="22" rx="4" fill="#38bdf8"/><text x="185" y="221" text-anchor="middle" fill="#0f1115" class="s">ldmatrix: read tile A from slot 0</text>
+        <rect x="296" y="200" width="6" height="64" fill="#22c55e"/><text x="308" y="214" fill="#22c55e" class="s">fence.proxy.async</text>
+        <text x="0" y="252" class="s">producer</text><rect x="308" y="238" width="200" height="22" rx="4" fill="#f472b6"/><text x="408" y="253" text-anchor="middle" fill="#0f1115" class="s">TMA: refill slot 0 with tile C</text>
+        <text x="0" y="284" class="d s">The fence makes the engine's write wait for the ordinary reads to be visible.</text>
+      </svg>
+    </div>
+  </div>
+
+  <div class="blocked">
+    <h3>b12x is opt-in, with a narrow contract <span class="chip opt">works when selected</span></h3>
+    <p><b>What it is.</b> "Automatic selection" in vLLM walks a fixed priority list and takes the first backend that <i>validates</i> — the first that can run the configuration, not the fastest. b12x is not on the list for any hardware, so on SM12x a user who passes no flag gets FA2 and never learns b12x exists.</p>
+    <ul class="where">
+      <li>Not in <code>_get_backend_priorities</code> for major 12 <span class="src">src: vllm/platforms/cuda.py</span>. Published numbers exist only for related kernels: an upstream pull request reports new BF16 SM12x kernels at about 1.1–1.2× over FA2 on an RTX PRO 6000, and slower than FA2 on many decode shapes <span class="src">issue</span>.</li>
+      <li>Missing pieces that would keep it from being a default: head dimension 64 (excluded pending flashinfer#6977), FP16 models, non-causal attention, multimodal prefixes, and <b>decode context parallelism</b> — splitting one request's KV cache across several GPUs, which a 2 × RTX PRO 6000 or 2 × Spark setup would want <span class="src">src: b12x.py</span>.</li>
+      <li>Prefill runs eagerly rather than inside a CUDA graph (a pre-recorded launch sequence that removes per-step Python overhead) <span class="src">src</span>.</li>
+      <li>A separate, deliberate policy applies to b12x's FP4 <b>GEMM</b>: FlashInfer excludes SM121 from auto-selection there, commenting that cutlass/cudnn are faster on GB10 in most cases <span class="src">your vault note, 2026-09-10 source inspection</span>. That is a GEMM policy, not an attention one; the vLLM b12x attention backend accepts both (12, 0) and (12, 1).</li>
+    </ul>
+  </div>
+
+  <div class="blocked">
+    <h3>Smaller open items</h3>
+    <div class="scroll"><table style="min-width:760px">
+      <tr><th>Item</th><th>Plain-language meaning</th><th>Status</th></tr>
+      <tr><td>Tile-size tuning for SM120</td><td>How many query rows × KV columns each block processes at once. Set too large it will not fit 99 KB; too small wastes the tensor cores.</td><td>Open PRs: flash-attention #2998 (FA4 BF16/FP16 forward default tiles), #3026 (FA2 use sm86/89-tuned tiles for head dim 128).</td></tr>
+      <tr><td>Multimodal prefix / non-causal on SM12x</td><td>Image tokens attend to each other in both directions, text attends only backwards. Needs a kernel that accepts a mixed mask.</td><td>Composite backends are Hopper / major-10 only <span class="src">src</span>. SM12x uses Triton or Flex for every token.</td></tr>
+      <tr><td>FA4 backward on SM120</td><td>The gradient kernel, needed for training or fine-tuning with FA4.</td><td>PR #3109 "SM12x-owned forward and backward" open.</td></tr>
+      <tr><td>Native <code>sm_121a</code> binaries</td><td>Code compiled for the Spark specifically rather than for the SM12x family.</td><td>Dropped from FlashInfer CUDA-13 aarch64 wheels in v0.6.18; only matters for the sparse block-scaled FP4 multiply, which requires the arch-specific target.</td></tr>
+      <tr><td>cuDNN attention routes on "Blackwell"</td><td>FlashInfer sometimes forwards a shape to NVIDIA's cuDNN library when that measured faster.</td><td>Release notes say "Blackwell" without a compute capability; whether SM12x takes these routes is unknown.</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<!-- ============================ TAB 3 ============================ -->
+<section id="s3">
+  <p><b>Framing.</b> The kernels exist, and pull-request authors have published numbers for them (REPORT.md §9). What does not exist is an independent comparison on one harness, tuning for the DGX Spark, or a complete fast path that combines paged storage, split-KV and a natively multiplied compressed cache in the code the engines call. REPORT.md §11 has the revised, more detailed plan. The path below is ordered so that each phase is cheap relative to the next and can end with "the stock kernel is already good enough" — a legitimate result.</p>
+
+  <h2>The questions, as a map</h2>
+  <svg viewBox="0 0 800 210" style="max-width:940px" role="img" aria-label="Six phases from baseline measurement through upstream contribution">
+    <g font-size="12">
+      <g><rect x="0" y="50" width="112" height="70" rx="8" fill="#232836" stroke="#a78bfa"/><text x="56" y="74" text-anchor="middle" font-weight="700">0 · Harness</text><text x="56" y="92" text-anchor="middle" class="d s">know what ran,</text><text x="56" y="106" text-anchor="middle" class="d s">know it is right</text></g>
+      <g><rect x="126" y="50" width="112" height="70" rx="8" fill="#232836" stroke="#a78bfa"/><text x="182" y="74" text-anchor="middle" font-weight="700">1 · Baseline</text><text x="182" y="92" text-anchor="middle" class="d s">every backend,</text><text x="182" y="106" text-anchor="middle" class="d s">both GPUs</text></g>
+      <g><rect x="252" y="50" width="112" height="70" rx="8" fill="#232836" stroke="#a78bfa"/><text x="308" y="74" text-anchor="middle" font-weight="700">2 · Roofline</text><text x="308" y="92" text-anchor="middle" class="d s">bandwidth or</text><text x="308" y="106" text-anchor="middle" class="d s">compute bound?</text></g>
+      <g><rect x="400" y="0" width="200" height="50" rx="8" fill="#232836" stroke="#38bdf8"/><text x="500" y="22" text-anchor="middle" font-weight="700">3 · Split-KV on SM12x</text><text x="500" y="38" text-anchor="middle" class="d s">low-batch decode</text></g>
+      <g><rect x="400" y="60" width="200" height="50" rx="8" fill="#232836" stroke="#f59e0b"/><text x="500" y="82" text-anchor="middle" font-weight="700">4 · Staging: TMA vs cp.async</text><text x="500" y="98" text-anchor="middle" class="d s">prefill, page-aligned tiles</text></g>
+      <g><rect x="400" y="120" width="200" height="50" rx="8" fill="#232836" stroke="#22c55e"/><text x="500" y="142" text-anchor="middle" font-weight="700">5 · Compressed KV</text><text x="500" y="158" text-anchor="middle" class="d s">Spark long context</text></g>
+      <g><rect x="636" y="50" width="164" height="70" rx="8" fill="#232836" stroke="#f472b6"/><text x="718" y="74" text-anchor="middle" font-weight="700">6 · Dispatch + upstream</text><text x="718" y="92" text-anchor="middle" class="d s">evidence-backed defaults,</text><text x="718" y="106" text-anchor="middle" class="d s">PRs with numbers</text></g>
+      <g stroke="#8a91a3" fill="none" stroke-width="1.5"><path d="M112 85H126"/><path d="M238 85H252"/><path d="M364 85 L400 25"/><path d="M364 85 H400"/><path d="M364 85 L400 145"/><path d="M600 25 L636 75"/><path d="M600 85 H636"/><path d="M600 145 L636 95"/></g>
+      <text x="0" y="200" class="d s">Phases 3, 4 and 5 are independent; phase 2 tells you which to do first on which machine.</text>
+    </g>
+  </svg>
+
+  <div class="phase"><div class="n">0</div><div>
+    <h3>Build the harness before touching a kernel</h3>
+    <p>Two failure modes dominate this area: benchmarking a kernel that was not the one that ran, and shipping a fast kernel that is subtly wrong. The harness exists to rule out both.</p>
+    <dl>
+      <dt>Record</dt><dd>GPU and compute capability; vLLM / SGLang / FlashInfer / flash-attn commit; the backend <i>and kernel</i> named in the startup log; head dimension; query-heads : KV-heads ratio; page size; KV dtype; query length, KV length, batch.</dd>
+      <dt>Correctness oracle</dt><dd>An FP32 reference (<code>torch.nn.functional.scaled_dot_product_attention</code> on a gathered, de-paged copy). Compare per-row maximum absolute and relative error with a tolerance chosen per dtype. Include masks, sinks, sliding window, page-boundary lengths (page size ± 1) and a context long enough to wrap every pipeline slot.</dd>
+      <dt>Stress gate</dt><dd>Re-run every case under CUDA-graph replay with unrelated work on a second stream. flashinfer#7675 passed eager tests and failed only this way.</dd>
+      <dt>Two levels</dt><dd>A kernel microbenchmark (one call, fixed shape) and a served benchmark (time to first token, inter-token latency). A combined tokens-per-second number hides a prefill win paired with a decode loss.</dd>
+      <dt>Done when</dt><dd>One command produces a table row for (machine, engine, backend, phase, shape) with a correctness verdict attached.</dd>
+    </dl></div></div>
+
+  <div class="phase"><div class="n">1</div><div>
+    <h3>Reproduce the support map on your own hardware, then baseline it</h3>
+    <p>Everything in tab 1 is a reading of source and documentation. The first experiment is to try to falsify it, which also yields the baseline numbers.</p>
+    <dl>
+      <dt>Run</dt><dd>vLLM with no flag, then <code>FLASH_ATTN</code>, <code>FLASHINFER</code>, <code>b12x</code>, <code>TRITON_ATTN</code>; SGLang with no flag, then <code>fa4</code>, <code>trtllm_mha</code>, <code>triton</code>, and the split prefill/decode flags. One BF16 GQA model with head dimension 128 on both machines.</dd>
+      <dt>Shapes</dt><dd>Prefill: 512 / 4k / 32k tokens. Decode: batch 1 / 8 / 64 at 1k / 8k / 32k / 128k context. KV dtype BF16 and FP8.</dd>
+      <dt>Likely first finding</dt><dd>Whether b12x beats FA2 at batch-1 long-context decode. No number for b12x paged attention itself was found for either machine.</dd>
+      <dt>Output</dt><dd>A results table worth posting to flashinfer#3170 (the DGX Spark support audit), since maintainers mostly lack a GB10.</dd>
+    </dl></div></div>
+
+  <div class="phase"><div class="n">2</div><div>
+    <h3>Decide what actually limits each machine</h3>
+    <p>The same roofline reasoning used for the course's GEMM kernels applies: compare achieved bytes per second against the memory ceiling and achieved multiply throughput against the tensor-core ceiling.</p>
+    <dl>
+      <dt>Hypothesis A</dt><dd>On the Spark, decode at long context is bandwidth-bound for every kernel, so kernels differ little and KV precision dominates. <b>Falsified if</b> two BF16 kernels differ by more than about 20% at batch 1 with a 32k context.</dd>
+      <dt>Hypothesis B</dt><dd>On the RTX PRO 6000, batch-1 decode is occupancy-bound: most of its ≈188 multiprocessors idle unless the KV axis is split. <b>Falsified if</b> achieved bandwidth is already near the ceiling without split-KV.</dd>
+      <dt>Tools</dt><dd>Nsight Compute per kernel (memory throughput, tensor-core utilisation, shared-memory use, registers per thread), with the same report layout already used for kernels 8–14.</dd>
+      <dt>Decision</dt><dd>If A holds, do phase 5 first on the Spark. If B holds, do phase 3 first on the PRO 6000.</dd>
+    </dl></div></div>
+
+  <div class="phase"><div class="n">3</div><div>
+    <h3>Split-KV for the SM12x path</h3>
+    <dl>
+      <dt>Question</dt><dd>For a given (batch, context, multiprocessor count), how many splits minimise decode latency, and does one heuristic serve both 48 and ≈188 multiprocessors?</dd>
+      <dt>Start from</dt><dd>Split-KV already exists in FA2, FlashInfer fa2, XQA, b12x decode and SGLang's SM12x FA4; only upstream FA4 lacks it (PRs #2336, #3108, #3109). The open work is the heuristic: each kernel sizes splits differently, and none was calibrated on a 48-SM Spark.</dd>
+      <dt>Experiment</dt><dd>Sweep <code>num_splits</code> ∈ {1, 2, 4, …} against batch and context on both machines; fit the crossover; compare the fitted rule with the SM100-derived heuristic.</dd>
+      <dt>Contribution</dt><dd>Either a revived, rebased #2336 with SM12x numbers, or a documented finding that the existing heuristic mis-sizes splits on 48 multiprocessors.</dd>
+      <dt>Risk</dt><dd>With FP8 the reduce step must merge partials that carry scales; define that contract before optimising.</dd>
+    </dl></div></div>
+
+  <div class="phase"><div class="n">4</div><div>
+    <h3>Staging: when does TMA beat <code>cp.async</code> with warp-level math?</h3>
+    <dl>
+      <dt>Question</dt><dd>At 99 KB, with <code>mma.sync</code> consumers, for which tile geometries and head dimensions does a TMA producer/consumer pipeline beat a tuned <code>cp.async</code> pipeline?</dd>
+      <dt>Already exists for decode</dt><dd><b>Page-aligned tiles.</b> b12x decode and one SGLang specialization make the KV tile divide the page size, so each tile is one TMA copy with one block-table lookup. The open case is <b>prefill</b>: b12x and SGLang both stage paged prefill with <code>cp.async</code> and a per-row or per-thread page lookup.</dd>
+      <dt>Compare</dt><dd>Four variants at identical semantics and precision: FA2 as shipped; <code>cp.async</code> + <code>mma.sync</code> tuned for SM12x; TMA + <code>mma.sync</code> tuned independently; b12x. Sweep stages (2 / 3 / 4) and tile sizes within 99 KB.</dd>
+      <dt>Gate</dt><dd>The phase-0 graph-replay stress test, with and without the proxy fence, before any timing is trusted.</dd>
+      <dt>Honest prior</dt><dd>TMA helps most where staging, not math, is the bottleneck — long prefill with large head dimensions. Phase 2 may show decode on the Spark gains nothing from it.</dd>
+    </dl></div></div>
+
+  <div class="phase"><div class="n">5</div><div>
+    <h3>Compressed KV with native low-precision math</h3>
+    <dl>
+      <dt>Question</dt><dd>Can the SM12x path multiply FP8 operands directly instead of widening to 16-bit after load, and how much accuracy does each cache format cost?</dd>
+      <dt>Check first</dt><dd>Your vault notes state SM12x tensor cores accept FP8 e4m3 and block-scaled FP4 natively. Confirm against the PTX documentation and a ten-line test kernel before designing around it.</dd>
+      <dt>Experiment</dt><dd>BF16 KV vs FP8 KV (widen after load) vs FP8 KV (native multiply) vs NVFP4 KV, on decode latency <i>and</i> on output error against the FP32 oracle and a task-level metric.</dd>
+      <dt>Start from</dt><dd>flash-attention #2980 / #3132 (FP8 forward on SM12x), SGLang #45871 (native FP8 KV for its SM120 FA4 kernels), FlashInfer's NVFP4 KV paths for sparse MLA.</dd>
+      <dt>Report</dt><dd>Speed and accuracy as separate columns. A cache-precision change is not a free exact-attention speed-up.</dd>
+    </dl></div></div>
+
+  <div class="phase"><div class="n">6</div><div>
+    <h3>Dispatch and upstreaming</h3>
+    <dl>
+      <dt>Dispatch</dt><dd>Turn the phase 1–5 tables into a rule: which backend for prefill and which for decode, per machine, per KV dtype. SGLang's per-phase flags let you run that rule today; vLLM would need it encoded in the major-12 priority list.</dd>
+      <dt>Candidates</dt><dd>b12x into vLLM's automatic list for the shapes where it wins; head dimension 64 for b12x (flashinfer#6977); a BF16 paged path for upstream FA4 SM120; a Spark-specific split heuristic.</dd>
+      <dt>What reviewers lack</dt><dd>Hardware. Before/after numbers from a real GB10 and a real RTX PRO 6000, with the correctness harness attached, are the scarce input.</dd>
+    </dl></div></div>
+
+  <div class="note"><b>Smallest experiment that would change this plan.</b> On each machine, serve one BF16 head-dimension-128 model twice — once with no flag and once with <code>--attention-backend b12x</code> — and measure batch-1 inter-token latency at a 32k context. If the two differ by less than measurement noise on the Spark but clearly on the RTX PRO 6000, hypotheses A and B both stand and the phase order above is right. If b12x wins clearly on the Spark too, decode there is not purely bandwidth-bound and phase 3 moves ahead of phase 5.</div>
+</section>
+
+<!-- ============================ TAB 4 ============================ -->
+<section id="s4">
+  <h2 style="margin-top:6px">What each claim rests on</h2>
+  <div class="scroll"><table style="min-width:760px">
+    <tr><th>Tag</th><th>Source</th><th>Read how</th></tr>
+    <tr><td><span class="src">docs</span></td><td>vLLM attention-backends page, "latest" developer preview dated 2026-11-17 — <a href="https://docs.vllm.ai/en/latest/design/attention_backends/">docs.vllm.ai/en/latest/design/attention_backends</a>. SGLang <code>docs/docs/advanced_features/attention_backend.mdx</code>.</td><td>Fetched; tables auto-generated from backend validators. The priority lists cover SM 8.x–9.x and 10.x only and say nothing about 12.x.</td></tr>
+    <tr><td><span class="src">src</span></td><td>vLLM <code>main@f39d833</code>: <code>vllm/platforms/cuda.py</code>, <code>vllm/v1/attention/backends/{fa_utils,flashinfer,b12x}.py</code>, <code>requirements/cuda.txt</code>. SGLang <code>main@b2cc023f</code>: <code>arg_groups/model_override_base.py</code>, <code>utils/device.py</code>, <code>kernels/ops/attention/</code>, <code>python/pyproject.toml</code>.</td><td>Shallow clones read on 2026-11-17. Not executed.</td></tr>
+    <tr><td><span class="src">rel</span></td><td>FlashInfer release notes v0.6.14 – v0.7.4 — <a href="https://flashinfer.ai/releases/">flashinfer.ai/releases</a>.</td><td>Fetched. "Tagged" means listed in a release highlight; individual PR states were not opened.</td></tr>
+    <tr><td><span class="src">issue</span></td><td>Dao-AILab/flash-attention <a href="https://github.com/Dao-AILab/flash-attention/issues/2307">#2307</a>, <a href="https://github.com/Dao-AILab/flash-attention/issues/2996">#2996</a> and the "sm120" PR search; flashinfer <a href="https://github.com/flashinfer-ai/flashinfer/issues/7675">#7675</a>, #3013, #3170; SGLang issues and PRs by number.</td><td>Issue pages fetched. PR states for #2329, #2336, #2348, #2980 come from the author's table in #2996, not from the PR pages. SGLang open-issue bodies were not read.</td></tr>
+  </table></div>
+  <h2>Known disagreements and gaps</h2>
+  <ul>
+    <li>vLLM's docs table lists FlashInfer compute capabilities as 8.x–9.x, 9.0 and 10.x, but the source accepts up to 12.1 and contains explicit SM12x branches. The source was taken as authoritative.</li>
+    <li>vLLM's docs list b12x KV dtypes as <code>auto</code> only; <code>b12x.py</code> also accepts <code>bfloat16</code>, <code>fp8</code> and <code>fp8_e4m3</code>.</li>
+    <li>vLLM's FA4 row says "≥ 10.0", yet FA4 is chosen automatically only for major 10, and vLLM's in-tree gate reports FA4 as unsupported outside 9.x–11.x. Forcing <code>flash_attn_version=4</code> on major 12 is expected to fail at startup (read from source, not run).</li>
+    <li>Two older vault notes say "FA4 is tcgen05-only → SM100 only". Upstream now has a separate SM120 <code>mma.sync</code> path, so that sentence is out of date; the practical conclusion (not servable on the Spark through vLLM) still holds for a different reason.</li>
+    <li>Memory bandwidth is from NVIDIA's pages (1,792 GB/s and 273 GB/s). The multiprocessor counts (188 and 48) are derived from core counts, not read from a device.</li>
+    <li>No row on this page reflects a measurement made for it. Published numbers are pull-request authors' claims; see REPORT.md §9.</li>
+  </ul>
+</section>
+</main>
+
+<script>
+  const tabs=[...document.querySelectorAll('.tab')];
+  function show(id){
+    tabs.forEach(t=>t.classList.toggle('on',t.dataset.t===id));
+    document.querySelectorAll('section').forEach(s=>s.classList.toggle('on',s.id===id));
+  }
+  tabs.forEach(t=>t.addEventListener('click',()=>{show(t.dataset.t);try{history.replaceState(null,'','#'+t.dataset.t)}catch(e){}}));
+  if(location.hash&&document.getElementById(location.hash.slice(1)))show(location.hash.slice(1));
+</script>
+</body>
+</html>
