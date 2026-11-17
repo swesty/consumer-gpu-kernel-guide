@@ -74,7 +74,7 @@ File citations are relative to the repository named in the surrounding section. 
 7. **Native FP8 tensor-core multiply exists on SM12x and is mostly unused.** b12x has it behind an environment variable. Upstream and SGLang have it in open pull requests that report 1.7× to 2.0× over BF16.
 8. **Public benchmark numbers exist, and they are modest for BF16.** On an RTX PRO 6000, the new BF16 kernels are reported at roughly 1.1× to 1.2× over FA2. The large reported gains are for FP8, for decode against the unoptimized upstream FA4, and against Triton.
 9. **The DGX Spark is admitted but not tuned.** b12x's tile specializations are keyed on exactly (12, 0). SGLang's split-KV latency model was fitted on 110-SM and 188-SM discrete cards. One FA2 tile fix explicitly excludes 12.1.
-10. **NVIDIA's documents disagree on shared memory per SM for capability 12.** The tuning guide says 128 KB. The programming guide says 100 KB, with 128 KB as the unified data cache. Both agree on 99 KB per thread block. The answer decides how many thread blocks fit per SM for every kernel in this report.
+10. **Shared memory per SM on capability 12 is very likely 100 KB, not 128 KB.** NVIDIA's tuning guide says 128 KB. Its programming guide says 100 KB and gives 128 KB as the unified L1/shared data cache, whose largest shared-memory carveout is 100 KB. Both agree on 99 KB per thread block, which is 100 KB minus the 1 KB CUDA reserves per block. Because of that reservation, two 64 KB blocks do not fit on one SM under either figure; two blocks fit only at 49 KB (50,176 B) each or less. Neither guide lists capability 12.1 separately.
 
 ---
 
@@ -144,18 +144,28 @@ The second case is the one FlashInfer issue #7675 reports for the b12x GEMM (sec
 | Limit | Capability 10.0 | Capability 12.0 | Source |
 |---|---|---|---|
 | Shared memory per thread block | 227 KB | **99 KB** | [S2 §1.4.1.1]; [S3 Table 34] |
-| Shared memory per SM | 228 KB | **128 KB** (tuning guide) or **100 KB** (programming guide) | [S2]; [S3] |
-| Unified data cache | 256 KB | 128 KB (programming guide) | [S3] |
+| Shared memory per SM | 228 KB | **100 KB** (programming guide; the largest carveout). The tuning guide says 128 KB, which matches the unified data cache [INF] | [S3] Tables 34–35; [S2 §1.4.1.1] |
+| Unified data cache (L1 + shared) | 256 KB | 128 KB, with shared-memory carveouts of 0, 8, 16, 32, 64 or 100 KB | [S3] Table 35 |
+| Shared memory CUDA reserves per block | 1 KB | 1 KB [INF: stated for 10.0 and 8.9; consistent with 100 − 99] | [S2 §1.4.2.3]; [S35 §1.4.2.2] |
 | Concurrent warps per SM | 64 | 48 | [S2]; [S3] |
-| Thread blocks per SM | 32 | 32 (tuning guide) or 24 (programming guide) | [S2]; [S3] |
+| Thread blocks per SM | 32 | **24** (programming guide). The tuning guide says 32 in one sentence covering "10.0 and 12.0" [INF: carried over from 10.0] | [S3]; [S2 §1.4.1.1] |
 | Registers per thread | 255 | 255 | [S2] |
 | Register file per SM | 64K 32-bit | 64K 32-bit | [S2] |
 
-CUTLASS encodes the per-block limit as `sm120_smem_capacity_bytes = 101376` (99 × 1024), used for both SM120 and SM121 [SRC] [`cutlass/include/cutlass/arch/arch.h:46-48, 118-121`](https://github.com/NVIDIA/cutlass/blob/b2f249acd20392beeb16f5e5a31f4f1a4e38b3bd/include/cutlass/arch/arch.h#L46-L48).
+CUTLASS encodes the per-block limit as `sm120_smem_capacity_bytes = 101376` (99 × 1024), used for both SM120 and SM121 [SRC] [`cutlass/include/cutlass/arch/arch.h:46-48, 118-121`](https://github.com/NVIDIA/cutlass/blob/b2f249acd20392beeb16f5e5a31f4f1a4e38b3bd/include/cutlass/arch/arch.h#L46-L48). Triton reports the same limit on an RTX PRO 6000: "Required: 102400, Hardware limit: 101376" [ISSUE] [S37].
 
-**The per-SM disagreement is unresolved and it matters.** Under the 128 KB reading, two 64 KB blocks fit on one SM. Under the 100 KB reading, only one does. Kernels that read the limit at run time (b12x, FlashInfer's fa2) adapt. Kernels that assume a count (FA2's split heuristic hard-codes two blocks per SM) do not. Neither guide mentions capability 12.1.
+**The per-SM figure is very likely 100 KB [INF].** Four observations point the same way:
 
-**The 48-warp limit is a second ceiling.** A 128-thread block is 4 warps, so at most 12 blocks fit by warp count. A 384-thread block is 12 warps, so at most 4.
+1. Programming guide Table 35 gives capability 12.x a 128 KB unified data cache with shared-memory carveouts of 0, 8, 16, 32, 64 and 100 KB. No supported configuration gives kernels 128 KB of shared memory [DOC] [S3].
+2. On every other capability NVIDIA documents, the per-block limit is the per-SM limit minus the 1 KB CUDA reserves per block: 100 and 99 KB on 8.9, 228 and 227 KB on 10.0 [DOC] [S2 §1.4.2.3] [S35 §1.4.2.2]. The programming guide's 100 and 99 KB for 12.x fit that rule. The tuning guide's 128 and 99 KB do not.
+3. The 12.x row of Table 35 is identical to the 8.9 (Ada) row, and the Ada tuning guide says 100 KB per SM [DOC] [S35 §1.4.1.1].
+4. A microbenchmark study of GB203 (the RTX 5080/5090 die) reports 128 KB of combined L1 and shared memory per SM, of which about 99 KB can be allocated as shared memory [S36].
+
+The tuning guide's 128 KB is most likely the unified-cache figure under the wrong label. None of these is a device query; section 11.3 gives the query that settles it.
+
+**Both readings give the same residency for every tile in this report [CALC].** A block occupies its shared memory plus the 1 KB reservation, so two blocks fit when 2 × (bytes + 1,024) ≤ the per-SM figure. That allows at most 50,176 B (49 KB) per block at 100 KB and 64,512 B at 128 KB. A 64 KB block needs 2 × 66,560 = 133,120 B, which exceeds 131,072 B, so two 64 KB blocks fit under neither figure. (An earlier version of this section said they fit under the 128 KB reading; that ignored the reservation and contradicted the table in section 3.) The two readings differ only for blocks between about 49 KB and 63 KB. Kernels that read the limit at run time (b12x, FlashInfer's fa2) adapt to whichever is true. Kernels that assume a count (FA2's split heuristic hard-codes two blocks per SM) do not. Neither guide lists capability 12.1 separately, so applying these numbers to the DGX Spark is an inference.
+
+**The 48-warp limit is a second ceiling.** A 128-thread block is 4 warps, so at most 12 blocks fit by warp count. A 384-thread block is 12 warps, so at most 4. With 24 blocks per SM, two-warp blocks reach the 48-warp limit exactly; one-warp blocks hit the block limit first.
 
 ### 2.6 Compilation targets
 
@@ -216,10 +226,10 @@ After the last KV tile, normalize O and write it out. For split-KV, write an unn
 
 **Shared-memory arithmetic [CALC].** With 16-bit elements, one stage, and Q, K and V all in shared memory, the bytes are 2 × (tile_m × d + tile_n × d + tile_n × d_v):
 
-| Head dim | Tile (m×n) | Bytes | Under 101,376? | Two per SM at 128 KB? |
+| Head dim | Tile (m×n) | Bytes | Under 101,376? | Two per SM? (2 × (bytes + 1,024) ≤ 102,400; same answer at 128 KB) |
 |---|---|---|---|---|
 | 64 | 128×128 | 49,152 | yes | yes |
-| 128 | 128×64 | 65,536 | yes | no (131,072 needed) |
+| 128 | 128×64 | 65,536 | yes | no (133,120 needed) |
 | 128 | 64×64 | 49,152 | yes | yes |
 | 128 | 128×128 | 98,304 | yes | no |
 | 256 | 64×64 | 98,304 | yes | no |
@@ -256,7 +266,7 @@ For comparison, the `is_sm8x` branch (Ada, RTX 30/40 series) uses 128×32 for no
 
 **What vLLM actually passes [SRC]** [`vllm/v1/attention/backends/flash_attn.py:1378-1403`](https://github.com/vllm-project/vllm/blob/f39d83306ea62d4ad8919995f378d8ca4aed8b57/vllm/v1/attention/backends/flash_attn.py#L1378-L1403): one `flash_attn_varlen_func` call serves the whole batch, with the block table, `fa_version=2`, and `num_splits=0`. The fork's wrapper raises `NotImplementedError("FA2 does not support num_splits > 1")` [SRC] fork [`vllm_flash_attn/flash_attn_interface.py:251-252`](https://github.com/vllm-project/flash-attention/blob/8dd9eaea16a6c71d2cff4d57c925a84d333e2de2/vllm_flash_attn/flash_attn_interface.py#L251-L252). With 0, the C++ heuristic runs only in the single-query GQA branch [INF] fork [`flash_api.cpp:757-762`](https://github.com/vllm-project/flash-attention/blob/8dd9eaea16a6c71d2cff4d57c925a84d333e2de2/csrc/flash_attn/flash_api.cpp#L757-L762).
 
-**Assessment [INF].** FA2 is correct and complete on SM12x, with split-KV decode and paged KV. Its tiles are inherited, not tuned, and its split heuristic assumes two blocks per SM, which holds only under the 128 KB reading and only for tiles of 64 KB or less.
+**Assessment [INF].** FA2 is correct and complete on SM12x, with split-KV decode and paged KV. Its tiles are inherited, not tuned, and its split heuristic assumes two blocks per SM, which holds only for tiles of at most 50,176 B at the likely 100 KB per SM (64,512 B at 128 KB). The default head-dimension-128 tile is 64 KB, so it runs one block per SM under either reading.
 
 ### 4.2 FlashInfer `fa2` templates
 
@@ -333,7 +343,8 @@ load_tma0(src_idx=src_idx, producer_state=producer_state)
 - **Who issues TMA.** By default no dedicated loader: warp 0 issues the next tile after releasing the consumed stage. A "role-specialized" variant adds a fifth warp that runs the loader loop, calls `setmaxregister_decrease(80)`, and lets the math warps raise theirs to 168 or 248 [SRC] [`forward_paged.py:5236-5335, 5598, 6350-6366`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/forward_paged.py#L5236-L5335).
 - **Stages.** One, whenever there are multiple KV warps or the cache is FP8 [SRC] [`forward_paged.py:3271-3285`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/forward_paged.py#L3271-L3285).
 - **Shared memory is read at run time.** `max_smem_per_sm` and `max_smem_per_block` come from the device. A candidate gets two blocks per SM if `2 × launch_bytes <= max_smem_per_sm`. Selection maximizes `(residency, num_mma_kv)`: occupancy first, tile width second [SRC] [`traits.py:204-211, 308, 329`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/traits.py#L204-L211).
-- **Worked sizes [CALC].** BF16 decode at head dimension 128: 39,424 B. At head dimension 256: 73,728 B, which cannot be doubled on a 100 KB SM and can on a 128 KB SM only if the launch overhead is under about 9 KB.
+- **Worked sizes [CALC].** BF16 decode at head dimension 128: 39,424 B, which fits twice under either reading. At head dimension 256: 73,728 B, which cannot be doubled under either reading, because 2 × 73,728 = 147,456 B exceeds even 131,072 B. (An earlier version said it could at 128 KB; that arithmetic was wrong.)
+- **The residency test omits the 1 KB reservation [INF].** `2 × launch_bytes <= max_smem_per_sm` does not add CUDA's 1 KB per block. On a 100 KB SM (102,400 B), a candidate of 50,177 to 51,200 B would be predicted to fit twice and would fit once. Whether any candidate falls in that range was not checked.
 - **Split-KV.** On under CUDA graphs with BF16 queries; always on for verify; never for extend [SRC] [`planner.py:2024-2039`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/planner.py#L2024-L2039). Capacity is `num_sms × graph_ctas_per_sm // num_kv_heads`, where `graph_ctas_per_sm` comes from a shape-keyed table of 1, 2, 4 or 6 [SRC] [`planner.py:227-228, 493-548`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/planner.py#L227-L228). Chunk budgets are table-driven by head dimension, GQA group, KV dtype and batch [SRC] [`planner.py:697-749`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/planner.py#L697-L749).
 - **Merge.** A persistent kernel reduces normalized partial outputs with base-2 log-sum-exp scores. It supports only output head dimensions 128 and 256 [SRC] [`merge.py:1-14, 198-223`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/merge.py#L1-L14); [`planner.py:75-84`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/planner.py#L75-L84).
 - **Query staging.** Predicated 16-byte `cp.async` [SRC] [`forward_paged.py:890-914`](https://github.com/flashinfer-ai/flashinfer/blob/778f57e4d73a73a439ad9cb88daabb5e14cbf816/flashinfer/experimental/b12x/attention/paged/forward_paged.py#L890-L914).
@@ -854,17 +865,20 @@ These are floors for reading the cache once. They ignore compute.
 
 ### 11.3 Phase 0 — Settle the device facts
 
-Four device attributes resolve the documentation conflict in section 2.5 and the derived SM counts. On each machine:
+Five device attributes resolve the documentation conflicts in section 2.5 and the derived SM counts. On each machine:
 
 ```
 cudaDevAttrMultiProcessorCount
 cudaDevAttrMaxSharedMemoryPerMultiprocessor
 cudaDevAttrMaxSharedMemoryPerBlockOptin
+cudaDevAttrReservedSharedMemoryPerBlock
 cudaDevAttrMaxBlocksPerMultiprocessor
 ```
 
+If the programming guide is right, both machines report 102,400, 101,376, 1,024 and 24 for the last four. A per-SM value of 131,072 or a block count of 32 would mean the tuning guide is right.
+
 - **Why first:** every residency claim in this report depends on the per-SM value. FA2's split heuristic assumes two blocks per SM. b12x and FlashInfer's fa2 read the value at run time, so their behaviour differs between a 100 KB and a 128 KB device.
-- **Done when:** a four-row table exists for each machine.
+- **Done when:** a five-row table exists for each machine.
 
 ### 11.4 Phase 1 — Harness
 
@@ -1017,7 +1031,10 @@ Each falsifies one claim in this report if its output differs.
 | The research path proposed page-aligned TMA tiles as a new idea | b12x decode and one SGLang specialization already do it (sections 4.5, 4.7) |
 | The research path proposed split-KV for SM12x as missing | It exists in FA2, FlashInfer fa2, XQA, b12x decode and SGLang `fa4_sm120`; it is missing only in upstream FA4 |
 | vLLM's default on SM12x is FA2 | True for plain BF16 models; `FLASHINFER` for FP8/NVFP4 KV, sinks, or a multimodal prefix |
-| Only the 99 KB shared-memory limit was given | 99 KB is per block; per SM is 128 KB or 100 KB depending on the NVIDIA document |
+| Only the 99 KB shared-memory limit was given | 99 KB is per block. Per SM is very likely 100 KB; the tuning guide's 128 KB matches the unified L1/shared cache (section 2.5) |
+| Under the 128 KB reading, two 64 KB blocks fit on one SM | They fit under neither reading: CUDA reserves 1 KB per block, so two need 133,120 B, more than 131,072 B (section 2.5) |
+| FA2's two-blocks-per-SM assumption holds at 128 KB for tiles up to 64 KB | It holds for tiles up to 50,176 B at 100 KB, or 64,512 B at 128 KB; FA2's default 64 KB tile runs one block per SM (section 4.1) |
+| A 73,728 B b12x candidate could run twice per SM at 128 KB | 2 × 73,728 = 147,456 B exceeds 131,072 B, so it cannot (section 4.5) |
 | Forcing FA4 in vLLM "depends on the fork, which was not inspected" | The gate is in vLLM's tree and excludes SM12x; the expected result is a startup failure |
 | vLLM PR #50862 was cited as an FA4 gate fix | It is closed without merging and concerns GDN prefill |
 
@@ -1034,8 +1051,8 @@ Each falsifies one claim in this report if its output differs.
 
 ### 13.3 Disagreements between primary sources
 
-- **Shared memory per SM, capability 12:** 128 KB (tuning guide) against 100 KB (programming guide).
-- **Thread blocks per SM, capability 12:** 32 against 24, same two documents.
+- **Shared memory per SM, capability 12:** 128 KB (tuning guide) against 100 KB (programming guide). The evidence favours 100 KB (section 2.5); a device query would settle it.
+- **Thread blocks per SM, capability 12:** 32 against 24, same two documents. The tuning guide gives 32 in a sentence shared with 10.0, which suggests it was carried over; 24 is more likely, and 24 two-warp blocks exactly fill the 48-warp limit. Both guides agree on 48 warps for 12.x; the 64 belongs to 10.0.
 - **Minimum toolkit for DGX Spark:** CUTLASS's README says CUDA 13.0; its [`config.h`](https://github.com/NVIDIA/cutlass/blob/b2f249acd20392beeb16f5e5a31f4f1a4e38b3bd/include/cutlass/arch/config.h) enables SM121 from 12.9.
 - **FA #2998's body** says `can_implement` rejects head dimension 256; no call to `can_implement` was found on the forward path at `9f9742c`.
 - **FA #3109's body** describes main's SM120 path as "fixed 64 × 64 tiles"; that matches the backward kernel, not the forward.
@@ -1043,6 +1060,7 @@ Each falsifies one claim in this report if its output differs.
 ### 13.4 Not determined
 
 - SM counts read from a device (188 and 48 are derived).
+- Per-SM shared memory and blocks per SM read from a device (100 KB and 24 are the likelier documented values).
 - Any limit specific to capability 12.1; neither NVIDIA guide mentions it.
 - Whether the `flashinfer-python==0.7.4` wheel contains `b12x.attention.paged`. FlashInfer's own guidance says experimental features are JIT-only and must not ship in pre-built packages.
 - FMHAv2's staging mechanism.
@@ -1075,6 +1093,8 @@ All accessed 2026-11-17.
 - [S5] DGX Spark hardware overview — <https://docs.nvidia.com/dgx/dgx-spark/hardware.html>
 - [S6] RTX PRO 6000 Blackwell datasheet (hosted by PNY; seen as a search snippet, not opened) — <https://www.pny.com/File%20Library/Company/Support/Product%20Brochures/NVIDIA%20RTX/English/NVIDIA-RTX-PRO-6000-Blackwell-Workstation-Edition.pdf>
 - [S7] RTX PRO 6000 Blackwell product page — <https://www.nvidia.com/en-us/products/workstations/professional-desktop-gpus/rtx-pro-6000/>
+- [S35] Ada tuning guide, version 13.5 (§1.4.1.1 occupancy; §1.4.2.2 "CUDA reserves 1 KB of shared memory per thread block") — <https://docs.nvidia.com/cuda/ada-tuning-guide/index.html>
+- [S36] "Dissecting the NVIDIA Blackwell Architecture with Microbenchmarks", arXiv:2507.10789v2, §III-2 and §VI-B (§VI-B read from an extracted summary, not verbatim) — <https://arxiv.org/html/2507.10789>
 
 **CUTLASS** (`b2f249a`)
 - [S8] [NVIDIA/cutlass](https://github.com/NVIDIA/cutlass/tree/b2f249acd20392beeb16f5e5a31f4f1a4e38b3bd) — files cited (11), linked at the pinned commit:
@@ -1183,6 +1203,7 @@ All accessed 2026-11-17.
   - [`vllm/v1/attention/backends/triton_flashinfer.py`](https://github.com/vllm-project/vllm/blob/f39d83306ea62d4ad8919995f378d8ca4aed8b57/vllm/v1/attention/backends/triton_flashinfer.py)
   - [`vllm/vllm_flash_attn/flash_attn_interface.py`](https://github.com/vllm-project/vllm/blob/f39d83306ea62d4ad8919995f378d8ca4aed8b57/vllm/vllm_flash_attn/flash_attn_interface.py)
 - [S24] Attention backends documentation — <https://docs.vllm.ai/en/latest/design/attention_backends/>
+- [S37] Issue #60172, Triton MLA decode exceeds 101,376 B on RTX PRO 6000 — <https://github.com/vllm-project/vllm/issues/60172>
 
 **SGLang** (`b2cc023f`)
 - [S25] Repository — [sgl-project/sglang](https://github.com/sgl-project/sglang/tree/b2cc023f23e14e6482490238968e018573847d0c) — files cited (31), linked at the pinned commit:

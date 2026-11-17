@@ -107,7 +107,7 @@
     <div class="card" style="border-color:var(--a)"><h3>Workstation Blackwell · SM120 / SM121</h3>
       <p class="cap">Staging: TMA bulk copy <b>is</b> available, as is the older <code>cp.async</code>.<br>Math: <code>mma.sync</code> — each warp multiplies a 16×8 tile and keeps the result in its own registers. No <code>wgmma</code>, no <code>tcgen05</code>, no TMEM.</p>
       <div class="barrow"><span>Shared memory</span><div class="bar" style="width:43.6%;background:var(--a)"></div><span>99 KB / block</span></div>
-      <p class="cap">Per SM the limit is 128 KB in NVIDIA's Blackwell tuning guide and 100 KB in its programming guide, so whether two 64 KB blocks share an SM is unsettled; query <code>cudaDevAttrMaxSharedMemoryPerMultiprocessor</code>. 48 warps per SM.<br>RTX 5090, RTX PRO 6000 Blackwell (SM120), DGX Spark GB10 (SM121).</p></div>
+      <p class="cap">Per SM the limit is very likely 100 KB: that is the programming guide's figure and the largest shared-memory carveout of the 128 KB L1/shared cache, which the Blackwell tuning guide reports as 128 KB of shared memory. CUDA reserves 1 KB per block, so two blocks fit only at 49 KB each or less, and two 64 KB blocks fit under neither figure. Confirm with <code>cudaDevAttrMaxSharedMemoryPerMultiprocessor</code>. 48 warps and (likely) 24 blocks per SM.<br>RTX 5090, RTX PRO 6000 Blackwell (SM120), DGX Spark GB10 (SM121).</p></div>
   </div>
 
   <h2>The two machines are not the same problem either</h2>
