@@ -1,0 +1,11 @@
+--- a/restore-deepseek0731.sh
++++ b/restore-deepseek0731.sh
+@@ -49,7 +49,7 @@
+ ssh 192.168.250.12 "docker stop vllm_glm53" 2>/dev/null || true
+ 
+ cd "$HOME/spark-vllm-docker"
+-bash run-recipe.sh deepseek-v4-flash-0731 --daemon --port 8888 --gpu-mem 0.85 -t deepseek0731-b12x:20261003 -- --revision "$revision"
++bash run-recipe.sh deepseek-v4-flash-0731 --daemon --port 8888 --gpu-mem 0.84 -t deepseek0731-b12x:20261003 -- --revision "$revision"
+ printf 'launch-returned %s\n' "$(date -u +%FT%TZ)"
+ # Bound the readiness wait; never restart an engine just because it is compiling.
+ for attempt in $(seq 1 180); do

@@ -35,6 +35,8 @@ A study of [TensorFold](https://github.com/ashhart/TensorFold) (a Zig + hand-wri
 | `bench/ab-arm.sh` | Flips `VLLM_ENABLE_ROCE_ALLREDUCE` in the GLM recipe on spark-3 and reloads through `~/glm53-load.sh` (one A/B arm). |
 | `bench/results/` | Raw JSON for each arm, plus MTP acceptance per arm. |
 | `roce-gid-mod/` | The eugr-style launch-time mod (`run.sh`, `patch_roce_gid_auto.py`) and its test against fixtures copied from both nodes' GID tables. |
+| `recipe-edits/recipes.patch` | The recipe half of spark-3 `spark-vllm-docker` commit `4fdfc5c` (branch `glm53-prep`, kept local; parent `0478428`). Both pair recipes get the mod and `gpu_memory_utilization: 0.84`; the DeepSeek 0731 recipe also gets `VLLM_ENABLE_ROCE_ALLREDUCE: "1"` and `VLLM_ROCE_ALLREDUCE_MAX_SIZE: "2MB"`. |
+| `recipe-edits/restore-deepseek0731.patch` | `~/restore-deepseek0731.sh` on spark-3 (not in git): `--gpu-mem` 0.85 → 0.84, to match the recipe. |
 
 ## Reproduce
 
@@ -47,6 +49,11 @@ ssh spark-3 'bash -s 1' < bench/ab-arm.sh
 
 # Test the GID patch against a copy of b12x's roce_oneshot.py taken from the serving image
 python3 -I roce-gid-mod/test_gid_auto.py /path/to/roce_oneshot.py
+
+# Rebuild the spark-3 lane setup on a fresh spark-vllm-docker checkout
+cp -r roce-gid-mod ~/spark-vllm-docker/mods/b12x-roce-gid-auto   # skip test_gid_auto.py if you like
+cd ~/spark-vllm-docker && git am /path/to/recipe-edits/recipes.patch   # or: git apply
+cd ~ && patch -p1 < /path/to/recipe-edits/restore-deepseek0731.patch
 ```
 
 After any load, check that the head log contains `Using RoCEnante (b12x one-shot RoCE collectives)` and `Using ['B12X_ROCENANTE', 'PYNCCL'] … group 'tp:0'`.
