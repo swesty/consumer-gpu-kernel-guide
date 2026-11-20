@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Where TensorFold's DGX Spark decode lead over vLLM comes from, which ideas are worth porting into vLLM, and the measured RoCE all-reduce fix on a two-Spark vLLM lane.">
+<title>TensorFold vs vLLM on DGX Spark</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Space+Grotesk:wght@500;600&display=swap">
+<style>
+/* Layout: one 760px reading column; wide tables and the chart scroll inside their own frames. Engineering-report register: graphite neutrals, one CX7-teal accent, evidence-label chips. */
+:root {
+  --bg: #f5f6f8;
+  --surface: #ffffff;
+  --ink: #14181e;
+  --muted: #5b6573;
+  --rule: #d9dde3;
+  --accent: #0b6f6e;
+  --accent-soft: #e0f0ef;
+  --warn: #9a5b00;
+  --warn-soft: #fbefdc;
+  --bad: #a3312b;
+  --bad-soft: #f8e3e1;
+  --good: #2c6e2f;
+  --good-soft: #e3f1e3;
+  --bar-a: #8b95a3;
+  --bar-b: #0b6f6e;
+  --font-display: "Space Grotesk", "IBM Plex Sans", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #101317; --surface: #171b21; --ink: #e6e9ee; --muted: #9aa4b2; --rule: #2b323c;
+    --accent: #4fc2bf; --accent-soft: #143534; --warn: #e2a64a; --warn-soft: #3a2a12;
+    --bad: #f08a83; --bad-soft: #3d1c1a; --good: #8fd193; --good-soft: #1b3320;
+    --bar-a: #6b7584; --bar-b: #4fc2bf; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #101317; --surface: #171b21; --ink: #e6e9ee; --muted: #9aa4b2; --rule: #2b323c;
+  --accent: #4fc2bf; --accent-soft: #143534; --warn: #e2a64a; --warn-soft: #3a2a12;
+  --bad: #f08a83; --bad-soft: #3d1c1a; --good: #8fd193; --good-soft: #1b3320;
+  --bar-a: #6b7584; --bar-b: #4fc2bf; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 16px/1.6 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 72px;
+}
+main { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 44px; }
+section { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(30px, 6vw, 42px); font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 24px; font-weight: 600; padding-top: 10px; border-top: 1px solid var(--rule); }
+h3 { font-size: 18px; font-weight: 600; margin-top: 6px; }
+p, ul, ol { margin: 0; }
+ul, ol { padding-left: 1.3em; display: flex; flex-direction: column; gap: 6px; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code, .mono { font-family: var(--font-mono); font-size: 0.88em; overflow-wrap: anywhere; }
+code { background: var(--accent-soft); padding: 0.05em 0.35em; border-radius: 3px; }
+.eyebrow { font: 500 12px/1.4 var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.lede { font-size: 18px; color: var(--ink); }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; font: 13px/1.5 var(--font-mono); color: var(--muted); }
+.answer { background: var(--surface); border: 1px solid var(--rule); border-left: 3px solid var(--accent); padding: 16px 18px; display: flex; flex-direction: column; gap: 8px; }
+.answer .q { font: 500 12px/1.4 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.answers { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.chip { display: inline-block; font: 500 11px/1 var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase; padding: 4px 6px 3px; border-radius: 3px; vertical-align: 1px; white-space: nowrap; }
+.m { background: var(--good-soft); color: var(--good); }
+.s { background: var(--accent-soft); color: var(--accent); }
+.i { background: var(--warn-soft); color: var(--warn); }
+.x { background: var(--bad-soft); color: var(--bad); }
+.legend { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 14px; color: var(--muted); }
+.tbl { overflow-x: auto; border: 1px solid var(--rule); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--rule); }
+th { font: 600 12px/1.4 var(--font-body); letter-spacing: 0.03em; text-transform: uppercase; color: var(--muted); background: var(--bg); }
+tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); white-space: nowrap; }
+.wide table { min-width: 680px; }
+figure { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+figcaption { font-size: 13px; color: var(--muted); }
+.chart { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); padding: 12px; }
+.chart svg { display: block; min-width: 560px; width: 100%; height: auto; }
+.callout { padding: 14px 16px; background: var(--warn-soft); border: 1px solid var(--rule); display: flex; flex-direction: column; gap: 6px; }
+.callout.fix { background: var(--accent-soft); }
+.callout strong:first-child { font-family: var(--font-display); }
+.rank { display: flex; flex-direction: column; gap: 12px; padding: 0; list-style: none; }
+.rank li { background: var(--surface); border: 1px solid var(--rule); padding: 14px 16px; display: grid; grid-template-columns: 34px 1fr; gap: 4px 12px; }
+.rank .no { grid-row: span 3; font: 600 22px/1 var(--font-display); color: var(--accent); }
+.rank .t { font-weight: 600; }
+.rank .d, .rank .r { font-size: 15px; }
+.rank .r { color: var(--muted); }
+pre { margin: 0; overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); padding: 12px 14px; font: 13px/1.5 var(--font-mono); }
+.small { font-size: 14px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<style>
+/* Standalone wrapper: the reset the Artifact host used to supply, plus theming for the hub nav the kernels-site build injects. */
+html{color-scheme:light}body{margin:0}img{max-width:100%}
+nav[aria-label="Kernel tools"]{border-bottom:1px solid var(--rule)!important;padding:0 0 12px!important;margin:-24px auto 24px!important;max-width:760px}
+nav[aria-label="Kernel tools"] a{color:var(--accent)!important}
+</style>
+</head>
+<body>
+<main>
+  <header style="display:flex;flex-direction:column;gap:14px">
+    <div class="eyebrow">Inference engineering · DGX Spark (GB10, sm_121)</div>
+    <h1>TensorFold vs vLLM on DGX Spark</h1>
+    <p class="lede">Where TensorFold's decode lead over vLLM actually comes from, what is worth bringing into vLLM, and how far one of those ideas got on the spark-3 + spark-4 pair.</p>
+    <div class="meta">
+      <span>2026-11-18</span>
+      <span>TensorFold <code>8cbef97</code></span>
+      <span>vLLM main as of 2026-11-18</span>
+      <span>Fleet lane: vLLM <code>0.1.dev21553+gab86b7073</code></span>
+    </div>
+  </header>
+
+  <section aria-labelledby="summary">
+    <h2 id="summary">Summary</h2>
+    <div class="answers">
+      <div class="answer">
+        <div class="q">Does TensorFold do something vLLM can't?</div>
+        <p>Mostly no. On GLM-5.3-Flash, most of its 1.45–2.26× decode lead comes from serving fewer weight bytes per token. It requantizes the checkpoint's BF16 non-expert weights to 4-bit at load. Per byte, vLLM's Marlin kernels are faster than TensorFold's.</p>
+      </div>
+      <div class="answer">
+        <div class="q">What is worth porting?</div>
+        <p>Two things: the b12x RoCE one-shot all-reduce for TP across Sparks, and "log and fold" rollback of linear-attention state under speculative decoding. The RoCE all-reduce already exists in the vLLM fork the fleet runs. It had been silently failing at startup because of a GID-index bug. Once fixed, it measured +7–11% decode at one stream in a fresh-start A/B/A, and +2–6% at four, within noise.</p>
+      </div>
+    </div>
+    <p>TensorFold does have three real structural differences:</p>
+    <ul>
+      <li>bit-exact guarantees (batched equals solo, drafted equals serial);</li>
+      <li>recurrent-state snapshots every 64 tokens for hybrid attention models;</li>
+      <li>per-stream draft depth chosen by a cost model.</li>
+    </ul>
+    <p>vLLM stays ahead on cold prefill, maturity and API breadth.</p>
+    <div class="legend" aria-label="Evidence labels">
+      <span><span class="chip m">Measured</span> a number someone published or we measured</span>
+      <span><span class="chip s">Source</span> read in the code</span>
+      <span><span class="chip i">Inference</span> reasoning, not observation</span>
+    </div>
+  </section>
+
+  <section aria-labelledby="scope">
+    <h2 id="scope">Scope and sources</h2>
+    <p>Everything outside the fleet was read only; nothing from these repositories was built or executed on a GPU. The fleet section is the one place where something was changed and measured.</p>
+    <div class="tbl wide"><table>
+      <thead><tr><th>Source</th><th>What it is</th><th>Pin</th></tr></thead>
+      <tbody>
+        <tr><td><a href="https://github.com/ashhart/TensorFold">ashhart/TensorFold</a></td><td>Zig host plus 157 hand-written CUDA kernels; OpenAI-compatible server. Apache-2.0 since v0.6.0 (MIT through 0.5.0).</td><td class="mono">8cbef97, v0.6.0</td></tr>
+        <tr><td>MiaAI-Lab TensorFold recipes</td><td>GLM-5.3-Flash EXL3 2× Spark, Qwen3.8-Flash-Next 1× Spark, DeepSeek-V4.1-Flash-1017 2× Spark. Each carries an engine patch series (up to 117 patches).</td><td class="mono">HEAD 2026-11-18</td></tr>
+        <tr><td>MiaAI-Lab/GLM-5.3-Flash-EXL3-2x-DGX-Sparks</td><td>The <em>vLLM</em> kit: exllamav3 extension, "fat" EXL3 GEMM/MoE kernels and an overlay <code>exl3.py</code> bolted into vLLM. AGPL-3.0 since 2026-09-07.</td><td class="mono">HEAD 2026-11-18</td></tr>
+        <tr><td><a href="https://github.com/jayleaton/glm53-tensorfold-spark">jayleaton/glm53-tensorfold-spark</a>, <a href="https://github.com/jayleaton/deepseek-v41-tensorfold-spark">deepseek-v41-tensorfold-spark</a></td><td>Same-weights, same-client TensorFold vs vLLM-kit benchmarks with step-by-step ladders and nsys breakdowns. Apache-2.0.</td><td class="mono">1b4fb60</td></tr>
+        <tr><td>vllm-project/vllm main, flashinfer-ai/flashinfer main</td><td>Upstream equivalents for each TensorFold kernel; FlashInfer now hosts b12x under <code>flashinfer/experimental/b12x</code>.</td><td class="mono">2026-11-18</td></tr>
+        <tr><td>local-inference-lab/vllm <code>dev/karmic-kraken</code></td><td>The vLLM fork eugr's <code>--exp-b12x</code> images build; contains the RoCE communicator.</td><td class="mono">ab86b7073</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section aria-labelledby="speed">
+    <h2 id="speed">Where TensorFold's speed comes from</h2>
+    <p>The cleanest evidence is jayleaton's comparison against a vLLM kit (Reederey87's fork of MiaAI-Lab's kit). It uses the same abliterated EXL3 GLM-5.3-Flash weights, the same two Sparks at TP=2 and the same benchmark client. Both stacks load the same DFlash2 drafter. The ladder walks TensorFold from upstream to its tuned build one change at a time. <span class="chip m">Measured</span></p>
+    <figure>
+      <div class="chart">
+        <svg viewBox="0 0 640 300" role="img" aria-labelledby="ch-title ch-desc">
+          <title id="ch-title">Decode tokens per second, vLLM kit vs TensorFold steps</title>
+          <desc id="ch-desc">Chat greedy: vLLM 22.8, TensorFold BF16 28.7, plus q4mse 44.3, plus drafting changes 44.7, final 51.6. Structured: 72.7, 65.1, 85.9, 101.2, 112.3.</desc>
+          <g font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="var(--muted)">
+            <!-- x scale: 0..120 tok/s over 190..610 => 3.5 px per tok/s -->
+            <line x1="190" y1="24" x2="190" y2="262" stroke="var(--rule)"/>
+            <line x1="365" y1="24" x2="365" y2="262" stroke="var(--rule)" stroke-dasharray="2 3"/>
+            <line x1="540" y1="24" x2="540" y2="262" stroke="var(--rule)" stroke-dasharray="2 3"/>
+            <text x="190" y="280" text-anchor="middle">0</text>
+            <text x="365" y="280" text-anchor="middle">50</text>
+            <text x="540" y="280" text-anchor="middle">100 tok/s</text>
+          </g>
+          <g font-family="IBM Plex Sans, system-ui, sans-serif" font-size="12" fill="var(--ink)">
+            <text x="182" y="44" text-anchor="end">vLLM kit</text>
+            <text x="182" y="92" text-anchor="end">TF, BF16 non-experts</text>
+            <text x="182" y="140" text-anchor="end">+ 4-bit non-experts</text>
+            <text x="182" y="188" text-anchor="end">+ draft depth, copies</text>
+            <text x="182" y="236" text-anchor="end">TF final (W20)</text>
+          </g>
+          <!-- chat (upper bar), structured (lower bar) -->
+          <g>
+            <rect x="190" y="30" width="79.8" height="14" fill="var(--bar-a)"/>
+            <rect x="190" y="46" width="254.5" height="14" fill="var(--bar-b)"/>
+            <rect x="190" y="78" width="100.5" height="14" fill="var(--bar-a)"/>
+            <rect x="190" y="94" width="227.9" height="14" fill="var(--bar-b)"/>
+            <rect x="190" y="126" width="155.1" height="14" fill="var(--bar-a)"/>
+            <rect x="190" y="142" width="300.7" height="14" fill="var(--bar-b)"/>
+            <rect x="190" y="174" width="156.5" height="14" fill="var(--bar-a)"/>
+            <rect x="190" y="190" width="354.2" height="14" fill="var(--bar-b)"/>
+            <rect x="190" y="222" width="180.6" height="14" fill="var(--bar-a)"/>
+            <rect x="190" y="238" width="393.1" height="14" fill="var(--bar-b)"/>
+          </g>
+          <g font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="var(--ink)">
+            <text x="275" y="41">22.8</text><text x="450" y="57">72.7</text>
+            <text x="296" y="89">28.7</text><text x="424" y="105">65.1 (0.90×)</text>
+            <text x="351" y="137">44.3</text><text x="496" y="153">85.9</text>
+            <text x="352" y="185">44.7</text><text x="550" y="201">101.2</text>
+            <text x="376" y="233">51.6 (2.26×)</text><text x="589" y="249">112.3</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Grey: "tf chat" greedy cell. Teal: "kit structured" greedy cell. Source: <code>glm53-tensorfold-spark/docs/CHANGES-SUMMARY.md</code>, "The journey"; the final row is from the README's W20 table.</figcaption>
+    </figure>
+    <p><strong>How the conclusion follows.</strong></p>
+    <ul>
+      <li><strong>Observation:</strong> with BF16 non-expert weights, TensorFold is only 1.26× faster on chat and is 0.90× (slower) on structured output. The 4-bit requantization (<code>q4mse</code>, patch 0001) is the largest single step.</li>
+      <li><strong>Mechanism:</strong> decode on a GB10 is limited by memory bandwidth (273 GB/s), so reading fewer bytes per token yields proportionally more tokens per second.</li>
+      <li><strong>Conclusion:</strong> most of the gap is a quantization choice, not a kernel advantage.</li>
+    </ul>
+    <h3>Attribution of the gap</h3>
+    <div class="tbl wide"><table>
+      <thead><tr><th>Cause</th><th>Approx. share</th><th>Evidence</th><th>Label</th></tr></thead>
+      <tbody>
+        <tr><td>Non-expert weight bytes (4.5 bpw vs BF16)</td><td>~50–65% of the log-gap</td><td>Verify step 57 → 30 ms; serial decode 17 → 33 tok/s (<code>RESULTS.md:47-48</code>). That the kit ran BF16 dense is inferred from its 82 GiB/node load.</td><td><span class="chip m">Measured</span> <span class="chip i">Inference</span></td></tr>
+        <tr><td>… against FP8 dense instead</td><td>shrinks to 1.10–1.14×</td><td>MiaAI TF recipe: prose 38.9 → 44.4, code 44.2 → 48.7 tok/s (<code>README.md:845</code>)</td><td><span class="chip m">Measured</span></td></tr>
+        <tr><td>Speculative policy: deeper DFlash2 windows, 16-row verify, copy drafts</td><td>~0 on prose; ~35–40% of the structured gap</td><td>Patch 0010 +13–20% structured/code; 0380 +16–27% on edit cells; prose acceptance equal (2.39 vs 2.42 tokens per verify)</td><td><span class="chip m">Measured</span></td></tr>
+        <tr><td>RoCE one-shot all-gather instead of NCCL</td><td>~12%</td><td>+10.8% decode at 1 stream, +4.3% at 4; transcripts identical</td><td><span class="chip m">Measured</span></td></tr>
+        <tr><td>Memory-path tuning</td><td>~15–20%</td><td>L2 prefetch +2.4%, 16-byte expert loads +3.3%, unpublished host tuning +4.8%</td><td><span class="chip m">Measured</span></td></tr>
+        <tr><td>Kernel efficiency per byte</td><td>negative for TF</td><td>Marlin 210–229 GB/s vs TF <code>_qmm</code> ~175–190 GB/s (different kit and weights)</td><td><span class="chip m">Measured</span></td></tr>
+        <tr><td>Host overhead / GPU idle</td><td>~3–7%</td><td>TF idles 1.8 ms per 53 ms round; a vLLM kit 5.5 ms per 73 ms step (cross-kit)</td><td><span class="chip i">Inference</span></td></tr>
+        <tr><td>CUDA graphs, GPU sampling, KV format</td><td>~0</td><td>Both capture graphs; both FP8 KV; TF's GPU sampler measured 0%</td><td><span class="chip m">Measured</span></td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>DeepSeek-V4.1 is a cleaner test</strong>, because both sides use the same 2.9 bpw EXL3 weights and quantization plays no part. <span class="chip m">Measured</span></p>
+    <ul>
+      <li>TensorFold leads by 1.44× on prose, 1.9–2.0× on code and 2.4–3.2× on structured output.</li>
+      <li>On code and structured output the gap is draft depth: 5.9 vs about 3.1 committed tokens per round.</li>
+      <li>On prose TensorFold commits fewer tokens per round, so its lead comes from a cheaper round. <span class="chip i">Inference</span></li>
+    </ul>
+    <p>That lane also replaced several kit kernels with CUDA rewrites (router GEMV +4–7%, a bundle of fused kernels +7.2%), so a recorded-Triton description fits only the Zig lane.</p>
+  </section>
+
+  <section aria-labelledby="structural">
+    <h2 id="structural">Structural differences</h2>
+    <div class="tbl wide"><table>
+      <thead><tr><th>TensorFold capability</th><th>Evidence</th><th>Closest vLLM equivalent</th></tr></thead>
+      <tbody>
+        <tr><td>Bit-exact guarantees: drafted equals serial, batched equals solo, resumed equals fresh</td><td>Gates 10/10, 4/4, 92/92; fixed-order split merges, no float atomics, <code>--fmad=false</code> builds <span class="chip m">Measured</span> <span class="chip s">Source</span></td><td><code>VLLM_BATCH_INVARIANT</code>; coverage of EXL3 and hybrid models on sm_121 unverified <span class="chip i">Inference</span></td></tr>
+        <tr><td>Recurrent-state snapshots every 64 tokens for hybrid (KDA + MLA) models</td><td>Identical 64K prompt replay: 0.26 s vs 5.77 s <span class="chip m">Measured</span></td><td>Hybrid prefix cache keeps state only at page boundaries (3,584 tokens in that kit)</td></tr>
+        <tr><td>Per-stream draft depth priced by a cost model inside one shared verify pass</td><td>+18/+32/+38% at 2/4/8 streams on Qwen3.6 MTP <span class="chip m">Measured</span></td><td>Static <code>num_speculative_tokens</code>; MiaAI's adaptive k is batch-uniform</td></tr>
+        <tr><td>Copy drafts ahead of a model drafter in the same round</td><td>Patch 0020: +9–12% on edit cells <span class="chip m">Measured</span></td><td><code>ngram</code> and <code>suffix</code> exist as separate methods, not combined with a model drafter</td></tr>
+        <tr><td>Per-request KV reservation ledger; disk spill tier that survives restarts</td><td>A 39K-token session restored in 0.42 s <span class="chip m">Measured</span></td><td>Block admission with preemption; LMCache-style KV connectors</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Where vLLM stays ahead:</strong></p>
+    <ul>
+      <li>Cold prefill: TensorFold reaches 0.87–0.89× on RigMark, but with different weights. On the same weights TensorFold is 1.11–1.15× faster.</li>
+      <li>4-stream time to first token: vLLM 0.81 s vs TensorFold 0.84 s.</li>
+      <li>Kernel efficiency per byte, API breadth (logprobs, <code>n&gt;1</code>) and maturity.</li>
+    </ul>
+    <p><strong>The 4-bit non-expert path has a quality cost:</strong> it changes 13 of 200 MMLU answers. <span class="chip m">Measured</span></p>
+  </section>
+
+  <section aria-labelledby="kernels">
+    <h2 id="kernels">Kernel survey</h2>
+    <p>Most of TensorFold's 157 kernels fall into one of three groups. Some are model glue. Some have a vLLM equivalent. Some exist mainly to keep results bit-exact, which costs FMA contraction and therefore speed that vLLM doesn't need to pay.</p>
+    <div class="tbl wide"><table>
+      <thead><tr><th>TensorFold kernel</th><th>What it does</th><th>vLLM already has</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">common/fp_pairs.cuh</td><td>Native <code>cvt</code> of FP4/FP8 pairs to bf16 on sm_121a</td><td>Same instruction in <code>csrc/quantization/fp4/nvfp4_utils.cuh</code></td></tr>
+        <tr><td class="mono">nvfp4_experts*.cu</td><td>NVFP4 grouped MoE on block-scaled <code>mma.sync</code></td><td>b12x MoE, FlashInfer CUTLASS sm120 MoE</td></tr>
+        <tr><td class="mono">mla.cu</td><td>Split-KV latent MLA, dense or sparse</td><td><code>flashinfer_mla_sparse_sm120</code>, FlashMLA sparse</td></tr>
+        <tr><td class="mono">gdn_prefill.cu, kda_chunk.cu</td><td>Gated DeltaNet / KDA prefill</td><td>FlashInfer GDN prefill (CUDA ≥ 13), FlashKDA</td></tr>
+        <tr><td class="mono">common/kda.cuh, flashnext_gdn.cu</td><td>One-launch linear-attention decode</td><td><code>csrc/gdn/fused_gdn_decode_kernel.cu</code></td></tr>
+        <tr><td class="mono">norms.cu, router_tiles.cuh</td><td>Fused add + RMSNorm; deterministic router logits</td><td><code>fused_add_rms_norm</code>; cuBLAS router</td></tr>
+        <tr><td class="mono">flashnext_mtp.cu fn_row_topk</td><td>Radix top-k for sampling</td><td>Triton/FlashInfer top-k/top-p samplers</td></tr>
+      </tbody>
+    </table></div>
+    <h3>EXL3 decode, compared with the vLLM kit</h3>
+    <p>vLLM main has no EXL3 support; the vLLM kit adds it through exllamav3. On the routed experts, TensorFold's decode differs from the kit's default single persistent <code>exl3_moe</code> kernel in five ways. <span class="chip s">Source</span></p>
+    <ul>
+      <li>An expert-major routing plan built on the GPU. The kit uses about a dozen torch ops per layer instead.</li>
+      <li>Trellis words decoded straight into tensor-core registers, without staging through shared memory.</li>
+      <li>A fixed-order split-K merge with no float atomics. The kit combines expert outputs with fp32 <code>atomicAdd</code>.</li>
+      <li>One input rotation per token when every expert shares the same rotation.</li>
+      <li>16-byte non-coherent loads issued a step ahead (+3.3%), and L2 prefetch during collectives (+2.4%).</li>
+    </ul>
+    <p>Both stacks' own docs, however, put routed-expert streaming at about 210–240 GB/s. So the EXL3 kernel itself is unlikely to explain much of the end-to-end gap. <span class="chip i">Inference</span></p>
+  </section>
+
+  <section aria-labelledby="ports">
+    <h2 id="ports">What to bring into vLLM</h2>
+    <ol class="rank">
+      <li><span class="no">1</span><span class="t">RoCE one-shot all-reduce for TP across Sparks</span>
+        <span class="d">FlashInfer main ships it (<code>flashinfer/experimental/b12x/comm/roce</code>: all-reduce ≤ 2 MiB, all-gather, world 2–16, graph capture). Upstream vLLM has no communicator for it. The local-inference-lab fork does: <code>b12x_roce_all_reduce.py</code> behind <code>VLLM_ENABLE_ROCE_ALLREDUCE=1</code>.</span>
+        <span class="r">Value: +6–11% at 1 stream in TensorFold; on this fleet's vLLM lane, +7–11% at 1 stream and +2–6% (within noise) at 4 (A/B/A below). Cost: about 1.3 GiB more at startup. Risk: by design it stops rather than falling back to NCCL; a stalled RDMA wait fails the step.</span></li>
+      <li><span class="no">2</span><span class="t">"Log and fold" rollback for GDN and KDA layers</span>
+        <span class="d">vLLM keeps a full recurrent state per draft position (<code>num_spec+1</code> slots). TensorFold logs small per-token records and folds only the accepted rows (<code>qwen35_keep.cu</code>, <code>common/kda.cuh</code> replay). vLLM has this only for Kimi-K3 (RecoverSSM), and its CuTe commit is gated to SM10x.</span>
+        <span class="r">Value: about 1–4% decode at 1–8 streams, plus about 160 MiB less state per request (arithmetic). Risk: invasive changes to cache-slot plumbing.</span></li>
+      <li><span class="no">3</span><span class="t">L2 prefetch on a side stream during collectives</span>
+        <span class="d">A small <code>cp.async.bulk.prefetch.L2</code> op over a load-time table of the next layer's dense and shared-expert weights.</span>
+        <span class="r">Value: +0.8–1.9% at TP=2, +3–4% at TP=3 on GLM. Risk: measured as a loss on Qwen-27B and Nemotron, so it must be gated per model.</span></li>
+      <li><span class="no">4</span><span class="t">Deterministic grouped EXL3 MoE decode (only if serving EXL3)</span>
+        <span class="d">Port from TensorFold v0.6.0 <code>cuda/exl3/experts_grouped.cuh</code>, which already has PyTorch bindings. Before porting, try the kit's own <code>GLM53_EXL3_MOE_FAST=1</code>, which claims +8–15%.</span>
+        <span class="r">Value: uncertain, since the stock kernel is near the bandwidth ceiling. Risk: fp32 intermediates shift draft acceptance.</span></li>
+    </ol>
+    <p><strong>The biggest lever is not a kernel.</strong> It is 4-bit non-expert weights, a quantization recipe that vLLM's int4 Marlin path already serves faster per byte than TensorFold's kernel. Weigh it against the MMLU drift above.</p>
+  </section>
+
+  <section aria-labelledby="fleet">
+    <h2 id="fleet">Fleet case study: RoCE on the spark-3 + spark-4 lane</h2>
+    <p>The lane serves GLM-5.3-Flash NVFP4 (eugr PR #421 recipe, TP=2 + DCP=2, MTP k=3) on image <code>glm53-b12x:ab86b70</code>. It is published through LiteLLM as <code>workhorse-large</code>. Its recipe already set <code>VLLM_ENABLE_ROCE_ALLREDUCE=1</code>.</p>
+    <div class="callout">
+      <strong>Finding: RoCE never came up</strong>
+      <p>The startup log of the container that ran from 2026-11-04 to 2026-11-18 showed the attempt failing on both ranks. vLLM then fell back to PyNCCL for the TP, DCP and EP groups. <span class="chip m">Measured</span></p>
+      <pre>RoCEnante initialization failed: RoCE all-reduce setup failed:
+  rank 0: RoCE proxy setup failed: ibv_query_gid: Invalid argument
+  rank 1: RoCE proxy setup failed: ibv_query_gid: Invalid argument
+Using ['PYNCCL'] all-reduce backends ... for group 'tp:0'</pre>
+    </div>
+    <p><strong>Root cause, in three steps:</strong></p>
+    <ol>
+      <li>The cluster launcher exports <code>NCCL_IB_GID_INDEX=-1</code>, which tells NCCL to choose the GID itself. <span class="chip m">Measured</span></li>
+      <li>b12x's <code>default_gid_index()</code> falls back to that variable when <code>B12X_ROCE_GID_INDEX</code> is unset, and passes <code>-1</code> literally to <code>ibv_query_gid</code>, which returns EINVAL. <span class="chip s">Source</span></li>
+      <li>FlashInfer main has the identical function, so upgrading FlashInfer does not fix it. <span class="chip s">Source</span></li>
+    </ol>
+    <p><strong>A fixed index cannot fix it either</strong>, because the right index differs per node. Each GID table depends on the order the node's addresses appeared. spark-3's fabric profile adds a second link-local address that pushes its IPv4 entries up one slot, and spark-4's table has a hole at index 3. <span class="chip m">Measured</span></p>
+    <div class="tbl"><table>
+      <thead><tr><th>Fabric HCA</th><th class="n">spark-3 IPv4 RoCE v2 GID</th><th class="n">spark-4 IPv4 RoCE v2 GID</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">rocep1s0f0 (192.168.250.0/24)</td><td class="n">index 5</td><td class="n">index 4</td></tr>
+        <tr><td class="mono">roceP2p1s0f0 (192.168.251.0/24)</td><td class="n">index 5</td><td class="n">index 4</td></tr>
+      </tbody>
+    </table></div>
+    <div class="callout fix">
+      <strong>Fix: mod <code>b12x-roce-gid-auto</code></strong>
+      <ul>
+        <li><strong>Behaviour:</strong> a negative or unset index now selects, on each node, the lowest index holding an IPv4-mapped RoCE v2 GID on every selected HCA, which is what NCCL does for <code>-1</code>. An explicit non-negative index is still honoured.</li>
+        <li><strong>Why per-node indices are safe:</strong> b12x exchanges the GID itself and uses the index only as the local source (<code>_roce_proxy.c</code> lines 178, 281, 305–306). <span class="chip s">Source</span></li>
+        <li><strong>Packaging:</strong> exact-anchor patch that aborts on drift, idempotent. Added to both the GLM recipe and the DeepSeek 0731 rollback recipe; the 0731 recipe also gained the two enable lines.</li>
+        <li><strong>Tests:</strong> on live hardware inside the image, it resolved 5 on spark-3 and 4 on spark-4. <span class="chip m">Measured</span></li>
+      </ul>
+    </div>
+    <h3>A second blocker: the startup memory check</h3>
+    <p>The first two relaunches with RoCE working failed on spark-4, which reported 103.3 GiB free against the 104.65 GiB that <code>gpu_memory_utilization=0.86</code> requires. <span class="chip m">Measured</span></p>
+    <ul>
+      <li>At idle, inside the image, CUDA reports 109.7 GiB free on spark-4 and 111.3 GiB on spark-3. vLLM's startup work therefore uses about 6.45 GiB before the check runs.</li>
+      <li>spark-4's idle state is unchanged since the last good start, so enabling RoCE adds about 1.3 GiB at startup. Only about 0.12 GiB of that is RoCE's buffers; the rest is probably b12x's kernel preparation. <span class="chip i">Inference</span></li>
+      <li><strong>Fix:</strong> <code>gpu_memory_utilization</code> 0.86 → 0.84. GLM's KV cache is pinned at 6 GiB by <code>kv_cache_memory_bytes</code>, so it loses no capacity.</li>
+      <li><strong>DeepSeek rollback:</strong> <code>restore-deepseek0731.sh</code> moved from <code>--gpu-mem 0.85</code> to 0.84. That trims about 1.2 GiB of its KV cache, because that recipe sizes its cache from this number.</li>
+    </ul>
+    <h3>A/B/A on fresh starts</h3>
+    <p>The first comparison against the old container's NCCL numbers showed +27–37%, roughly three times what TensorFold reports for the same change. A fair A/B/A followed, each arm a fresh start with identical settings and only <code>VLLM_ENABLE_ROCE_ALLREDUCE</code> changed.</p>
+    <ul>
+      <li><strong>Benchmark:</strong> greedy decoding, thinking off, 512 tokens per reply, a direct call to <code>:8888</code>, the same prompts every time.</li>
+      <li><strong>1-stream figures</strong> are the median of 3 runs; <strong>4-stream figures</strong> are aggregate tokens over wall time.</li>
+      <li><strong>Acceptance</strong> is MTP's accepted over drafted tokens, read from <code>/metrics</code> around each run.</li>
+    </ul>
+    <div class="tbl wide"><table>
+      <thead><tr><th>tok/s</th><th class="n">NCCL, 13-day container</th><th class="n">RoCE, fresh (A1)</th><th class="n">NCCL, fresh (B)</th><th class="n">RoCE, fresh (A2)</th><th class="n">RoCE (mean of A1, A2) vs NCCL (B)</th></tr></thead>
+      <tbody>
+        <tr><td>1 stream, prose</td><td class="n">22.3</td><td class="n">29.1</td><td class="n">26.7</td><td class="n" id="a2-p1">29.9</td><td class="n" id="d-p1">+10.5%</td></tr>
+        <tr><td>1 stream, code</td><td class="n">35.9</td><td class="n">45.4</td><td class="n">42.5</td><td class="n" id="a2-c1">45.7</td><td class="n" id="d-c1">+7.2%</td></tr>
+        <tr><td>4 streams, prose</td><td class="n">40.8</td><td class="n">55.9</td><td class="n">55.9</td><td class="n" id="a2-p4">57.9</td><td class="n" id="d-p4">+1.8%</td></tr>
+        <tr><td>4 streams, code</td><td class="n">65.0</td><td class="n">82.3</td><td class="n">80.8</td><td class="n" id="a2-c4">88.9</td><td class="n" id="d-c4">+5.9%</td></tr>
+        <tr><td>MTP acceptance</td><td class="n">—</td><td class="n">50.5%</td><td class="n">52.1%</td><td class="n" id="a2-acc">51.3%</td><td class="n">—</td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Reading the table:</strong></p>
+    <ul>
+      <li>RoCE's real gain is +7–11% at one stream, consistent across both RoCE arms. At four streams it is +2–6%, inside the run-to-run spread: A1 and A2 differ by up to 8% there. That matches TensorFold's pattern of +10.8% at one stream and +4.3% at four.</li>
+      <li>Most of the first +30% came from the long-running container itself. It decoded 17–20% slower than a fresh start of the same configuration; the cause is unknown. <span class="chip m">Measured</span></li>
+      <li>The RoCE path applies only to the TP group; the DCP and EP groups still use PyNCCL.</li>
+    </ul>
+    <p class="small">Spec-decode acceptance stayed at 50–52% in every arm, so the gain is not a drafting artifact. After the final arm, steady-state <code>MemAvailable</code> was about 2.0 GiB on spark-3 and 3.3 GiB on spark-4.</p>
+  </section>
+
+  <section aria-labelledby="native">
+    <h2 id="native">vLLM-native sm_12x tuning avenues</h2>
+    <p>vLLM has its own levers for workstation and edge Blackwell (sm_120 and sm_121), separate from anything in TensorFold. The upstream defaults mostly target data-center sm_100, so on a GB10 the backend often has to be chosen or tuned explicitly. The claims below came from an outside summary; each one is marked with what was checked here.</p>
+    <div class="tbl wide"><table>
+      <thead><tr><th>Avenue</th><th>Claim</th><th>Checked on 2026-11-18</th></tr></thead>
+      <tbody>
+        <tr><td>b12x linear and MoE backends (<code>--linear-backend b12x --moe-backend b12x</code>)</td><td>sm_12x kernels for 128×128 block FP8, per-tensor FP8, MXFP8, NVFP4 (W4A16) and MXFP4, dense and TP MoE</td><td><code>docs/features/quantization/b12x.md</code> exists upstream; the spark-3/4 lane already runs <code>linear_backend='b12x'</code> and <code>moe_backend='b12x'</code> (b12x 1.5.0, flashinfer-python 0.7.1). <span class="chip s">Source</span> <span class="chip m">Measured</span></td></tr>
+        <tr><td>Marlin vs b12x on sm_121</td><td>Register pressure and smaller shared memory can make Marlin beat b12x on some GB10 shapes; benchmark both per model</td><td>vLLM issue #40882 is closed (2026-06-08). Not benchmarked on this lane. <span class="chip i">Unverified</span></td></tr>
+        <tr><td>Helion (<code>vllm/kernels/helion</code>)</td><td>Per-shape AOT-autotuned GEMMs (standard, split-K, swap-AB) with hybrid small-batch dispatch, for FP8-dynamic, W8A8-INT8 and block FP8</td><td>Present in vLLM main with <code>tools/autotune_helion_kernels.py</code>. Shipped configs cover only B200, H100 and H200, none for GB10 or RTX PRO 6000. On a Spark the tuner must be run locally. No path ties Helion to <code>--linear-backend</code>. Low relevance to the NVFP4 lane. <span class="chip s">Source</span></td></tr>
+        <tr><td>Native NVFP4 W4A4 default (vLLM ≥ 0.30), NVFP4 KV cache (≥ 0.32)</td><td>Native block-scaled FP4 via <code>mma</code> on sm_12x instead of weight-only fallbacks</td><td>The lane already runs <code>kv_cache_dtype=nvfp4_ds_mla</code> on its fork build. Release-version claims not checked. <span class="chip i">Unverified</span></td></tr>
+        <tr><td>Native sm_121 cubins</td><td>Some builds omit sm_12x code and fall back to generic paths; check <code>TORCH_CUDA_ARCH_LIST</code></td><td>PyTorch in the image targets sm_80, sm_90, sm_100, sm_110 and sm_120. sm_120 code runs on sm_121, because GPUs of the same major architecture can run each other's binaries. b12x JIT-compiles with <code>CUTE_DSL_ARCH=sm_121a</code>. A <code>cuobjdump</code> listing of vLLM's own <code>.so</code> files came back empty and is inconclusive. <span class="chip m">Measured</span></td></tr>
+      </tbody>
+    </table></div>
+    <p><strong>Tuning candidates for this fleet, cheapest first:</strong></p>
+    <ul>
+      <li>Benchmark b12x against Marlin on the NVFP4 single-box models.</li>
+      <li>Autotune Helion only for an FP8 or INT8 dense model, if one comes back into service.</li>
+      <li>Confirm vLLM's own kernels carry sm_120 or sm_121 code, using a toolkit image that has <code>cuobjdump</code>.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="license">
+    <h2 id="license">Licensing for any port</h2>
+    <ul>
+      <li><strong>Safe to port from, with notices kept:</strong>
+        <ul>
+          <li>TensorFold: Apache-2.0 from v0.6.0, MIT through 0.5.0. Its EXL3 decode code also carries an exllamav3 MIT notice.</li>
+          <li>jayleaton's repos and MiaAI's TensorFold recipes for GLM and DeepSeek: Apache-2.0. MiaAI's Qwen3.8 TensorFold recipe: MIT.</li>
+          <li>b12x and FlashInfer: Apache-2.0.</li>
+        </ul>
+      </li>
+      <li><strong>Don't copy from:</strong> MiaAI-Lab's vLLM kits for GLM and Qwen3.8 are AGPL-3.0 since 2026-09-07 (MIT only for earlier contributions), which makes them unsuitable for upstreaming into vLLM.</li>
+      <li><strong>Unclear:</strong> the DFlash2 drafter's licence. The recipes say CC BY-NC-ND, while TensorFold's changelog says the model card now says Apache-2.0. Re-check the card.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="open">
+    <h2 id="open">Open questions and falsifying tests</h2>
+    <ul>
+      <li><strong>The weight-bytes share depends on an inference.</strong> If the Reederey87 kit actually ran FP8 dense rather than BF16, the weight-bytes share drops to about 10–14% and more of the gap is unexplained. The test is to run TensorFold with BF16 non-experts and drafting off, against the kit with speculative decoding off, with one nsys trace per side. Steps within about 10% of each other mean bytes explain the gap.</li>
+      <li><strong>No per-kernel profile of both stacks</strong> in the same run has been published.</li>
+      <li><strong>The fail-stop risk on the fleet lane.</strong> A fabric stall now fails a step instead of falling back to NCCL. Watch the lane's error rate after the change.</li>
+      <li><strong>Memory headroom on spark-3.</strong> The head node bottoms out at about 1.7–2.1 GiB <code>MemAvailable</code> under this lane, with or without RoCE. That is thin for a unified-memory GB10, where an out-of-memory condition can hang the box. Lowering <code>kv_cache_memory_bytes</code> buys about 285K tokens of context per GiB.</li>
+      <li><strong>The long-running container slowdown.</strong> The container that had run for 13 days decoded 17–20% slower than a fresh start of the same configuration. Possible causes include allocator fragmentation, prefix-cache growth and clock behaviour. Test with a scheduled restart and a weekly benchmark.</li>
+      <li><strong>The fold-rollback estimate</strong> is arithmetic. Profile one Qwen3.8 MTP-3 decode step at 8 streams and sum the time of the <code>fused_gdn_decode_post_conv_mtp</code> kernels. Well under 3% of the step means it isn't worth the plumbing.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

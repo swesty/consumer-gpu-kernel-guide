@@ -1,0 +1,7 @@
+MTP spec-decode acceptance, read from vLLM /metrics (vllm:spec_decode_num_accepted_tokens_total / vllm:spec_decode_num_draft_tokens_total)
+on the spark-3 + spark-4 GLM-5.3-Flash lane, 2026-11-18. Each fresh arm starts the counters near zero, so the values are close to bench-only.
+
+01-roce-fresh-A1   4619 / 9147  = 50.5%  (read after the bench; includes the swap script's smoke call)
+02-nccl-fresh-B    4673 / 8976  = 52.1%  (before 2/3, after 4675/8979)
+03-roce-fresh-A2   4647 / 9054  = 51.3%  (before 2/3, after 4649/9057)
+00-nccl-13day      not recorded
